@@ -8,18 +8,20 @@
 
 ## 담당
 
-| 역할 | 담당 | 브랜치 | 파일 |
-|---|---|---|---|
-| A 학습·집계 | 이건 | `a-learning` | `hfl/data_split.py` `hfl/model.py` `hfl/aggregate.py` `tests/test_learning.py` `docs/aggregation_check.md` |
-| B 서버·배정 | 윤효연 | `b-server` | `configs/` `hfl/common.py` `hfl/assign.py` `hfl/comm.py` `servers/` `runner/` `scripts/run_all.py` `tests/test_server.py` `docs/api.md` `docs/log_format.md` `README.md` `requirements.txt` |
-| C 모니터링 화면 | 김영헌 | `c-dashboard` | `dashboard/` `scripts/make_report.py` `docs/usability_test.md` |
-| 실험·검증 | 전원 | — | `docs/report.md`, 교차 검증 |
+| 역할 | 담당 | 파일 |
+|---|---|---|
+| A 학습·집계 | 이건 | `hfl/data_split.py` `hfl/model.py` `hfl/aggregate.py` `tests/test_learning.py` `docs/aggregation_check.md` |
+| B 서버·배정 | 윤효연 | `configs/` `hfl/common.py` `hfl/assign.py` `hfl/comm.py` `servers/` `runner/` `scripts/run_all.py` `tests/test_server.py` `docs/api.md` `docs/log_format.md` `README.md` `requirements.txt` |
+| C 모니터링 화면 | 김영헌 | `dashboard/` `scripts/make_report.py` `docs/usability_test.md` |
+| 실험·검증 | 전원 | `docs/report.md`, 교차 검증 |
 
 ## 규칙
 
 - 파일마다 주인 1명. 남의 파일 고칠 땐 주인에게 먼저 말하기.
 - `docs/api.md`, `docs/log_format.md` 는 3명 합의 없이 변경 금지.
-- 자기 브랜치에서 작업 → `main` 으로 PR → 다른 1명 확인 후 병합.
+- 브랜치·PR 없이 `main` 에 바로 push.
+  - push 전에 `git pull --rebase` 로 최신 `main` 받기.
+  - 실행 안 되는 코드(import 오류 등)는 올리지 않기. 다른 사람이 받자마자 깨짐.
 
 ## 실행 (구현 후)
 
