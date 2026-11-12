@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>HFL 모니터</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/vendor/echarts.min.js"></script>
+</head>
+<body>
+<header id="top">
+  <select id="exp"></select>
+  <select id="compare_exp"></select>
+  <input id="round" type="range" min="1" max="20" value="1">
+  <span id="pin_chip"></span>
+</header>
+<section id="kpi"></section>
+<section id="legend"></section>
+<main class="regions">
+  <section class="region" id="r1">
+    <h2>① 계층 구조·배정</h2>
+    <div class="panels"><div class="panel" id="p_tree"></div><div class="panel" id="p_assign"></div></div>
+  </section>
+  <section class="region" id="r2">
+    <h2>② 통신 상태</h2>
+    <div class="panels"><div class="panel" id="p_comm_heatmap"></div><div class="panel" id="p_requests"></div></div>
+  </section>
+  <section class="region" id="r3">
+    <h2>③ 데이터·클라 학습</h2>
+    <div class="panels"><div class="panel" id="p_data"></div><div class="panel" id="p_clients"></div></div>
+  </section>
+  <section class="region" id="r4">
+    <h2>④ 공동 모델·실험 비교</h2>
+    <div class="panels"><div class="panel" id="p_trend"></div><div class="panel" id="p_compare"></div></div>
+  </section>
+</main>
+<script src="/static/state.js"></script>
+<script src="/static/kpi.js"></script>
+<script src="/static/structure.js"></script>
+<script src="/static/comm.js"></script>
+<script src="/static/data.js"></script>
+<script src="/static/global.js"></script>
+</body>
+</html>
