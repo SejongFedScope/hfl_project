@@ -31,7 +31,7 @@
 | target | 기록하는 곳 | 필드 |
 |---|---|---|
 | `global` | 중앙 | round, model_version(집계 결과 버전), eval_data(test), acc, loss, acc_by_digit[10], edge_n |
-| `C1`~`C6` | runner | round, model_version(학습 시작 버전), edge, n, train_loss, eval_data, acc, loss, acc_by_digit, participated, **update_norm**(학습 전후 모델 차이 크기 ‖new_w − w‖) |
+| `C1`~`C6` | runner | round, model_version(학습 시작 버전), edge, n, train_loss, eval_data, acc, loss, acc_by_digit, participated |
 | `E1`, `E2` | 엣지 | round, model_version, clients, client_n, n_samples |
 | `round` | runner | round, duration_ms (라운드 시작~중앙 집계 확인) |
 
@@ -46,6 +46,6 @@
 | `api` | 예: `POST /client_update` |
 | `latency_ms` | 보낸 쪽에서 잰 요청~응답 시간 |
 | `ok`, `status`, `error` | 성공 여부(200), HTTP 상태 코드, 연결 실패 시 예외 이름 |
-| `req_bytes` | 요청 본문 크기 (화면 트래픽용) |
+| `req_bytes` | 요청 본문 크기 (화면 누적 통신량용) |
 | `bytes` | 응답 본문 크기 |
 | `kind` | `config`(시작 설정) / `measured`(실제 측정) / `injected`(일부러 넣은 시험 요청) |

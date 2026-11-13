@@ -21,7 +21,7 @@ def inject_faults(cfg, exp_id, comm_log, round_no, cid, edge, version, new_w, n)
 
 def run(method, inject):
     """서버 준비 대기 → /start → 라운드 반복:
-    클라 순서대로 GET /model → train_local → evaluate → train.jsonl (update_norm 포함) → POST /client_update
+    클라 순서대로 GET /model → train_local → evaluate → train.jsonl → POST /client_update
     라운드 끝: 중앙 /status 로 버전 r+1 확인, train.jsonl 에 duration_ms
     """
     raise NotImplementedError  # TODO 3.5.2, 3.5.3
