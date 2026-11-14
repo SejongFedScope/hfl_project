@@ -1,2 +1,158 @@
-function render_tree(state) {}  // TODO 4.3.2 ① 계층 트리: 중앙–엣지–클라, 엣지 색, 참여·실패
-function render_assign_matrix(state) {}  // TODO 4.3.3 ① 선호·배정 행렬: 클라 × 엣지 양측 순위 + 배정 점 + 위반 수
+function round_failures(b, r) {  // {보낸 쪽: 실패 요청 수} (409·타임아웃 포함)
+  const out = {};
+  b.comm.filter(x => x.round === r && !x.ok).forEach(x => { out[x.src] = (out[x.src] || 0) + 1; });
+  return out;
+}
+
+function digits_of(b, c) {
+  return b.split.clients[c].digit_counts.map((n, d) => (n > 0 ? d : null)).filter(d => d !== null);
+}
+
+function render_tree(s) {  // 4.3.2 ① 계층 트리
+  const b = s.bundle;
+  if (!b) return;
+  const chart = chart_of("p_tree");
+  const L = lit();
+  const fails = round_failures(b, s.round);
+  const joined = new Set(b.train.filter(x => x.round === s.round && x.participated).map(x => x.target));
+  const pick = css_var("--pick");
+  const muted = css_var("--text-muted");
+  const critical = css_var("--critical");
+
+  const node_style = (color, on) => ({
+    color, opacity: on ? 1 : DIM,
+    borderColor: L && on ? pick : color, borderWidth: L && on ? 2 : 1,
+  });
+
+  const edges = Object.keys(b.assignment.assignment).sort().map(e => {
+    const on_e = !L || L.edges.has(e);
+    const clients = [...b.assignment.assignment[e]].sort().map(c => {
+      const on_c = !L || L.clients.has(c);
+      const f = fails[c] || 0;
+      const absent = !joined.has(c);
+      return {
+        name: c,
+        target: {type: "client", id: c},
+        itemStyle: node_style(absent ? muted : edge_color(e), on_c),
+        lineStyle: {color: edge_color(e), opacity: on_c ? 0.8 : DIM},
+        label: {
+          opacity: on_c ? 1 : DIM,
+          formatter: `{id|${c}}  {d|${digits_of(b, c).join(" ")}}` + (f ? `  {bad|실패 ${f}}` : "") + (absent ? "  {bad|미참여}" : ""),
+        },
+        tip: `${c} · ${e}<br>숫자 ${digits_of(b, c).join(", ")} · ${b.split.clients[c].n.toLocaleString()}장` +
+          (f ? `<br>이번 라운드 실패 요청 ${f}건` : "") + (absent ? "<br>이번 라운드 미참여" : ""),
+      };
+    });
+    const f = fails[e] || 0;
+    return {
+      name: e,
+      target: {type: "edge", id: e},
+      itemStyle: node_style(edge_color(e), on_e),
+      lineStyle: {color: edge_color(e), opacity: on_e ? 0.8 : DIM},
+      label: {position: "top", align: "center", distance: 8, opacity: on_e ? 1 : DIM, formatter: `{id|${e}}` + (f ? `  {bad|실패 ${f}}` : "")},  // 선과 안 겹치게 노드 위
+      tip: `${e} · 클라 ${clients.length}명 · 표본 ${b.assignment.edge_composition[e].n.toLocaleString()}장` + (f ? `<br>이번 라운드 실패 요청 ${f}건` : ""),
+      children: clients,
+    };
+  });
+
+  const root = {
+    name: "S",
+    itemStyle: {color: css_var("--text-secondary"), opacity: L ? DIM : 1},
+    label: {formatter: "{id|중앙 S}", opacity: L ? DIM : 1},
+    tip: "중앙 서버 S · 2차 집계",
+    children: edges,
+  };
+
+  const text = base_text();
+  chart.setOption({
+    animationDurationUpdate: 150,
+    textStyle: text,
+    tooltip: {trigger: "item", formatter: p => p.data.tip || esc(p.name)},
+    series: [{
+      type: "tree", data: [root], orient: "LR", layout: "orthogonal",
+      left: 56, right: 120, top: 12, bottom: 12,
+      symbol: "circle", symbolSize: 11, expandAndCollapse: false, roam: false,
+      lineStyle: {width: 1.5, curveness: 0.5},
+      label: {
+        position: "left", verticalAlign: "middle", align: "right", fontSize: 11,
+        rich: {
+          id: {fontWeight: 700, color: css_var("--text-primary"), fontSize: 12},
+          d: {color: text.color, fontSize: 11},
+          bad: {color: critical, fontWeight: 700, fontSize: 11},
+        },
+      },
+      leaves: {label: {position: "right", align: "left"}},
+      emphasis: {disabled: true},
+    }],
+  });
+  bind_focus(chart, p => (p.data && p.data.target) || null);
+}
+
+function render_assign_matrix(s) {  // 4.3.3 ① 선호·배정 행렬
+  const b = s.bundle;
+  if (!b) return;
+  const chart = chart_of("p_assign");
+  const a = b.assignment;
+  const L = lit();
+  const edges = Object.keys(a.edge_prefs).sort();
+  const clients = Object.keys(a.client_prefs).sort();
+  const ce = client_edge(b);
+  const pick = css_var("--pick");
+
+  const data = [];
+  clients.forEach((c, yi) => {
+    edges.forEach((e, xi) => {
+      const assigned = ce[c] === e;
+      const c_rank = a.client_prefs[c].indexOf(e) + 1;
+      const e_rank = a.edge_prefs[e].indexOf(c) + 1;
+      const on = !L || (L.clients.has(c) && (L.edges.has(e) || !assigned));
+      data.push({
+        value: [xi, yi, assigned ? 1 : 0],
+        target: {type: "client", id: c},
+        tip: `${c} → ${e}: 클라가 매긴 순위 ${c_rank}위 · 엣지가 매긴 순위 ${e_rank}위` + (assigned ? "<br><b>실제 배정</b>" : ""),
+        itemStyle: {
+          color: assigned ? edge_color(e) : css_var("--sunken"),
+          opacity: on ? 1 : DIM,
+          borderColor: L && on && assigned ? pick : css_var("--surface"),
+          borderWidth: L && on && assigned ? 2 : 2,
+        },
+        label: {
+          show: true, opacity: on ? 1 : DIM,
+          color: assigned ? "#ffffff" : css_var("--text-secondary"),
+          fontWeight: assigned ? 700 : 400,
+          formatter: `클라 ${c_rank}위 · 엣지 ${e_rank}위`,
+        },
+      });
+    });
+  });
+
+  const ck = a.check;
+  const summary = `평균 선호 순위 ${ck.mean_pref_rank.toFixed(2)}위 · 미배정 ${ck.unassigned.length} · 중복 ${ck.duplicated.length} · 정원 위반 ${ck.capacity_violation.length}`;
+  const text = base_text();
+  chart.setOption({
+    animationDurationUpdate: 150,
+    textStyle: text,
+    title: {text: `${a.method === "pref" ? "선호 배정" : "무작위 배정"} · ${summary}`, bottom: 0, left: 0, textStyle: {fontSize: 11, fontWeight: 400, color: text.color}},
+    tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
+    grid: {left: 32, right: 4, top: 22, bottom: 28},
+    xAxis: {
+      type: "category", data: edges, position: "top", triggerEvent: true,
+      axisLine: {show: false}, axisTick: {show: false},
+      axisLabel: {fontWeight: 700, color: css_var("--text-primary"), formatter: e => `${e} (정원 ${a.capacity})`},
+    },
+    yAxis: {
+      type: "category", data: clients, inverse: true, triggerEvent: true,
+      axisLine: {show: false}, axisTick: {show: false},
+      axisLabel: {fontWeight: 700, color: css_var("--text-primary")},
+    },
+    series: [{type: "heatmap", data, emphasis: {disabled: true}}],
+  });
+  bind_focus(chart, p => {
+    if (p.componentType === "xAxis") return {type: "edge", id: p.value};
+    if (p.componentType === "yAxis") return {type: "client", id: p.value};
+    return (p.data && p.data.target) || null;
+  });
+}
+
+subscribe(render_tree);
+subscribe(render_assign_matrix);

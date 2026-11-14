@@ -12,12 +12,14 @@
 <header id="top">
   <h1>계층적 연합학습 모니터</h1>
   <label class="control">실험 <select id="exp"></select></label>
-  <label class="control">비교 <select id="compare_exp"></select></label>
+  <label class="control">비교 실험 <select id="compare_exp"></select></label>
   <div class="control round_control">
     <input id="round" type="range" min="1" max="1" value="1" aria-labelledby="round_label">
     <span id="round_label">라운드 – / –</span>
+    <span class="kbd_hint">← → 키로 이동</span>
   </div>
-  <span id="pin_chip" hidden></span>
+  <span id="status" role="status"></span>
+  <button id="pin_chip" type="button" hidden></button>
 </header>
 
 <section id="kpi" aria-label="핵심 지표"></section>

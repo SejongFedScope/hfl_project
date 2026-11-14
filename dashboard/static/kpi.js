@@ -51,7 +51,14 @@ function render_kpi(s) {
   const v = kpi_values(b, r);
   const tiles = [];
 
-  tiles.push(make_tile("라운드", `${r} / ${b.config.rounds}`, `${b.config.algorithm} · ${b.config.assign_method} 배정`));
+  const ce = client_edge(b);
+  const joined = new Set(b.train.filter(x => x.round === r && x.participated).map(x => x.target));
+  const per_edge = Object.keys(b.assignment.assignment).sort().map(e => {
+    const cs = Object.keys(ce).filter(c => ce[c] === e);
+    return `${e} ${cs.filter(c => joined.has(c)).length}/${cs.length}`;
+  });
+  const n_clients = Object.keys(ce).length;
+  tiles.push(make_tile("참여 클라", `${joined.size} / ${n_clients}`, per_edge.join(" · "), joined.size < n_clients ? "down" : ""));
 
   if (v.now) {
     let sub = "첫 라운드", cls = "";
