@@ -34,7 +34,7 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
 
   const text = base_text();
   chart.setOption({
-    animationDurationUpdate: 150,
+    animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
     grid: {left: 112, right: 8, top: 20, bottom: 8},

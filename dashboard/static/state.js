@@ -154,6 +154,7 @@ async function load_compare(exp) {  // ④ 배정 방식 비교용 두 번째 �
 }
 
 async function init() {
+  await document.fonts.ready;  // 글꼴 받은 뒤에 그려야 글자가 나중에 바뀌지 않음
   let exps;
   try {
     exps = await fetch_json("/api/experiments");

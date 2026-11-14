@@ -65,7 +65,7 @@ function render_tree(s) {  // 4.3.2 ① 계층 트리
 
   const text = base_text();
   chart.setOption({
-    animationDurationUpdate: 150,
+    animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => p.data.tip || esc(p.name)},
     series: [{
@@ -130,7 +130,7 @@ function render_assign_matrix(s) {  // 4.3.3 ① 선호·배정 행렬
   const summary = `평균 선호 순위 ${ck.mean_pref_rank.toFixed(2)}위 · 미배정 ${ck.unassigned.length} · 중복 ${ck.duplicated.length} · 정원 위반 ${ck.capacity_violation.length}`;
   const text = base_text();
   chart.setOption({
-    animationDurationUpdate: 150,
+    animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
     textStyle: text,
     title: {text: `${a.method === "pref" ? "선호 배정" : "무작위 배정"} · ${summary}`, bottom: 0, left: 0, textStyle: {fontSize: 11, fontWeight: 400, color: text.color}},
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
