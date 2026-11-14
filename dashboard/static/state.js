@@ -11,7 +11,10 @@ function chart_of(id) {  // 패널 div 하나 = ECharts 인스턴스 하나
   if (!charts[id]) charts[id] = echarts.init(document.getElementById(id));
   return charts[id];
 }
-window.addEventListener("resize", () => Object.values(charts).forEach(c => c.resize()));
+window.addEventListener("resize", () => {
+  Object.values(charts).forEach(c => c.resize());
+  notify();  // 칸 크기에 따라 숫자 표시 여부가 바뀌는 패널이 있어서 다시 그림
+});
 
 function esc(s) {  // 툴팁은 HTML 이라 로그 값을 그대로 넣지 않음
   return String(s).replace(/[&<>"']/g, ch => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[ch]));

@@ -15,6 +15,7 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
     rows.push({key: e, label: `${e} 합 · 숫자 ${covered}/10`, edge: e, counts: comp[e].digit_counts, target: {type: "edge", id: e}, total: true});
   }
   const max = Math.max(...rows.flatMap(r => r.counts));
+  const show_num = (chart.getWidth() - 120) / 10 >= 32;  // 칸이 좁으면 숫자 숨김 (툴팁엔 그대로)
 
   const data = [];
   rows.forEach((row, yi) => {
@@ -57,7 +58,7 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
     },
     series: [{
       type: "heatmap", data, emphasis: {disabled: true},
-      label: {show: true, fontSize: 10, fontWeight: 600, formatter: p => p.value[2].toLocaleString()},
+      label: {show: show_num, fontSize: 10, fontWeight: 600, formatter: p => p.value[2].toLocaleString()},
     }],
   });
   bind_focus(chart, p => {
