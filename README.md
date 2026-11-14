@@ -10,7 +10,7 @@
 
 | 역할 | 담당 | 파일 |
 |---|---|---|
-| A 학습·집계 | 이건 | `hfl/data_split.py` `hfl/model.py` `hfl/aggregate.py` `tests/test_learning.py` `docs/aggregation_check.md` |
+| A 학습·집계 | 이건 | `hfl/data_split.py` `hfl/model.py` `hfl/aggregate.py` `tests/test_learning.py` `docs/aggregation_check.md` `docs/third_party.md` |
 | B 서버·배정 | 윤효연 | `configs/` `hfl/common.py` `hfl/assign.py` `hfl/comm.py` `servers/` `runner/` `scripts/run_all.py` `tests/test_server.py` `docs/api.md` `docs/log_format.md` `README.md` `requirements.txt` |
 | C 모니터링 화면 | 김영헌 | `dashboard/` `scripts/make_report.py` `docs/usability_test.md` |
 | 실험·검증 | 전원 | `docs/report.md`, 교차 검증 |
@@ -36,6 +36,7 @@ python -m tests.test_learning      # 집계 손계산 · 분할 중복
 python -m tests.test_server        # 배정 위반 · 409
 python -m scripts.run_all          # 서버 3개 + 실험 3개 (pref, random, pref+결함 주입) → logs/
 python -m dashboard.app            # http://127.0.0.1:5050
+python -m dashboard.app --sample   # 실제 로그 대신 dashboard/sample_logs/ 시험 로그로 화면 보기
 ```
 
 서버를 따로 띄울 때 (터미널 4개):
@@ -76,7 +77,8 @@ hfl_project/
 └─ docs/
    ├─ api.md                    B   ★약속
    ├─ log_format.md             B   ★약속
-   ├─ aggregation_check.md      A
+   ├─ aggregation_check.md      A   손계산 예제
+   ├─ third_party.md            A   공개 코드(FedProx) 사용 기록·수정 사항·원본 실행 기록
    ├─ usability_test.md         C
    └─ report.md                 공동
 ```
