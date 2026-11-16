@@ -2,6 +2,8 @@
 import numpy as np
 
 from hfl.aggregate import weighted_average
+from hfl.common import load_config
+from hfl.data_split import load_mnist, make_split, split_summary
 
 # docs/aggregation_check.md 손계산 예제 (클라: 엣지, 표본 수, 모델)
 HAND_CLIENTS = {
@@ -52,7 +54,21 @@ def test_two_stage_equals_flat():
 
 def test_split_no_overlap():
     """클라 간 인덱스 겹침 0, 클라당 표본 수 = samples_per_client, 같은 시드 → 같은 분할"""
-    raise NotImplementedError  # TODO 2.2.4
+    cfg = load_config()
+    train_y = load_mnist(cfg)["train_y"]
+    split = make_split(cfg, train_y)
+    summary = split_summary(split, train_y)
+
+    all_idx = [i for idx in split.values() for i in idx]
+    assert len(all_idx) == len(set(all_idx))                    # 클라 간 겹침 0 (같은 숫자 클라끼리 포함)
+    for c, idx in split.items():
+        assert len(idx) == cfg["samples_per_client"]           # 클라별 전체 이미지 수 동일
+        assert summary[c]["n"] == cfg["samples_per_client"]
+        held = {d for d, k in enumerate(summary[c]["digit_counts"]) if k > 0}
+        assert held == set(cfg["client_digits"][c])            # 지정 숫자만 보유
+        assert set(int(train_y[i]) for i in idx) == held       # 인덱스의 실제 라벨로 다시 확인
+    assert make_split(cfg, train_y) == split                    # 같은 시드 → 같은 분할
+    assert make_split({**cfg, "seed": cfg["seed"] + 1}, train_y) != split   # 시드가 다르면 다른 분할
 
 
 if __name__ == "__main__":
