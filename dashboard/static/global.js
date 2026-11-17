@@ -2,10 +2,15 @@ function global_series(b) {  // 라운드별 공동 모델 기록 (중앙 2차 �
   return [...Array(b.config.rounds).keys()].map(i => b.train.find(x => x.target === "global" && x.round === i + 1) || null);
 }
 
+function draw_empty(chart, msg) {  // 그릴 기록이 없을 때 이유를 가운데에
+  draw(chart, {title: {text: msg, left: "center", top: "middle", textStyle: {fontSize: 12, fontWeight: 400, color: css_var("--text-muted")}}});
+}
+
 function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라운드 × 숫자 정확도
   const b = s.bundle;
   if (!b) return;
   const chart = chart_of("p_trend");
+  if (!done_rounds(b)) return draw_empty(chart, "아직 끝난 라운드가 없음");
   const L = lit();
   const g = global_series(b);
   const rounds = g.map((_, i) => `R${i + 1}`);
@@ -45,7 +50,7 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
   const axis_x = gi => ({type: "category", gridIndex: gi, data: rounds, boundaryGap: gi === 2, axisTick: {show: false},
     axisLine: {lineStyle: {color: css_var("--border")}}, axisLabel: {show: gi === 2, color: ink, fontWeight: 700, interval: rounds.length > 12 ? 1 : 0}});
   const text = base_text();
-  chart.setOption({
+  draw(chart, {
     animation: false,
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || `${p.seriesName} · ${p.name}: ${p.seriesName === "손실" ? Number(p.value).toFixed(3) : (p.value * 100).toFixed(1) + "%"}`},
@@ -88,31 +93,40 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
 
 function compare_metrics(b) {
   const comp = b.assignment.edge_composition;
-  const [e1, e2] = Object.keys(comp).sort();
-  const dist = e => { const t = comp[e].n; return comp[e].digit_counts.map(n => n / t); };
-  const p = dist(e1), q = dist(e2);
+  const es = nsort(Object.keys(comp));
+  const dist = e => { const t = comp[e].n || 1; return comp[e].digit_counts.map(n => n / t); };
+  let tv = 0;  // 엣지 쌍마다 숫자 분포 차이(총변동거리)를 재고 가장 큰 값 (엣지가 3개 이상이어도 됨)
+  es.forEach((a, i) => es.slice(i + 1).forEach(c => {
+    const p = dist(a), q = dist(c);
+    tv = Math.max(tv, 0.5 * p.reduce((acc, v, k) => acc + Math.abs(v - q[k]), 0));
+  }));
   const g = global_series(b).filter(Boolean);
-  const reqs = b.comm.filter(x => x.round >= 1);
+  const reqs = b.comm.filter(x => x.round >= 1 && is_measured(x));  // 일부러 넣은 시험 요청은 성공률에서 뺌
   const durs = b.train.filter(x => x.target === "round").map(x => x.duration_ms);
   return [
     ["배정 방식", b.assignment.method === "pref" ? "선호(matching)" : b.assignment.method === "random" ? "무작위" : b.assignment.method],
     ["평균 선호 순위 (낮을수록 좋음)", b.assignment.check.mean_pref_rank.toFixed(2) + "위"],
-    ["엣지별 숫자 종류", Object.keys(comp).sort().map(e => `${e} ${comp[e].digit_counts.filter(n => n > 0).length}`).join(" · ")],
-    ["엣지 간 숫자 분포 차이 (0 = 같음)", (0.5 * p.reduce((a, v, i) => a + Math.abs(v - q[i]), 0)).toFixed(2)],
+    ["엣지별 숫자 종류", es.map(e => `${e} ${comp[e].digit_counts.filter(n => n > 0).length}`).join(" · ")],
+    ["엣지 간 숫자 분포 차이 (0 = 같음)", es.length > 1 ? tv.toFixed(2) : "–"],
     ["마지막 라운드 공동 정확도", g.length ? (g[g.length - 1].acc * 100).toFixed(1) + "%" : "–"],
-    ["요청 성공률 (전체)", reqs.length ? ((reqs.filter(x => x.ok).length / reqs.length) * 100).toFixed(1) + "%" : "–"],
+    ["요청 성공률 (시험 요청 제외)", reqs.length ? ((reqs.filter(x => x.ok).length / reqs.length) * 100).toFixed(1) + "%" : "–"],
     ["평균 라운드 시간", durs.length ? fmt_ms(durs.reduce((a, v) => a + v, 0) / durs.length) : "–"],
   ];
 }
 
 function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도 곡선 + 배정·구성 지표 표
   const b = s.bundle, c = s.compare_bundle;
-  if (!b || !c) return;
+  if (!b) return;
   const host = document.getElementById("p_compare");
   if (!document.getElementById("p_compare_chart")) {
     host.innerHTML = '<div id="p_compare_chart" class="sub_chart"></div><div class="sub_table"></div>';
   }
   const chart = chart_of("p_compare_chart");
+  if (!c) {  // 비교 실험을 못 불러오면 빈칸 대신 이유
+    host.querySelector(".sub_table").replaceChildren();
+    chart.resize();
+    return draw_empty(chart, "비교 실험을 불러오지 못함 · 위에서 다른 실험을 고르세요");
+  }
   const ink = css_var("--text-primary");
   const muted = css_var("--text-muted");
   const ga = global_series(b), gc = global_series(c);
@@ -122,11 +136,12 @@ function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도
   const label_of = (x, exp) => `${x.assignment.method === "pref" ? "선호" : "무작위"} (${exp})`;
 
   const text = base_text();
-  chart.setOption({
+  draw(chart, {
     animation: false,
     textStyle: text,
     tooltip: {trigger: "axis", valueFormatter: v => (v === null || v === undefined ? "–" : (v * 100).toFixed(1) + "%")},
-    title: {text: max_diff === null ? "" : `공동 정확도 최대 차이 ${max_diff.toFixed(1)}%p` + (max_diff < 0.05 ? " → 두 배정의 공동 모델이 같음" : ""),
+    title: {text: max_diff === null ? (done_rounds(c) ? "" : "비교 실험에 끝난 라운드가 없어 곡선 비교 불가")
+      : `공동 정확도 최대 차이 ${max_diff.toFixed(1)}%p` + (max_diff < 0.05 ? " → 두 배정의 공동 모델이 같음" : ""),
       left: 0, top: 0, textStyle: {fontSize: 11, fontWeight: 600, color: ink}},
     legend: {top: 18, left: 0, itemWidth: 16, itemHeight: 2, textStyle: {fontSize: 10, color: text.color}},
     grid: {left: 40, right: 12, top: 42, bottom: 18},

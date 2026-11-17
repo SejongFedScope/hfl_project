@@ -9,8 +9,8 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
   const pick = css_var("--pick");
 
   const rows = [];  // 위에서부터: E1 클라들, E1 합, E2 클라들, E2 합
-  for (const e of Object.keys(comp).sort()) {
-    [...comp[e].clients].sort().forEach(c => rows.push({key: c, label: c, edge: e, counts: b.split.clients[c].digit_counts, target: {type: "client", id: c}}));
+  for (const e of nsort(Object.keys(comp))) {
+    nsort(comp[e].clients).forEach(c => rows.push({key: c, label: c, edge: e, counts: b.split.clients[c].digit_counts, target: {type: "client", id: c}}));
     const covered = comp[e].digit_counts.filter(n => n > 0).length;
     rows.push({key: e, label: `${e} 합 · 숫자 ${covered}/10`, edge: e, counts: comp[e].digit_counts, target: {type: "edge", id: e}, total: true});
   }
@@ -33,7 +33,7 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
   });
 
   const text = base_text();
-  chart.setOption({
+  draw(chart, {
     animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
@@ -47,13 +47,11 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
       type: "category", data: rows.map(r => r.label), inverse: true, triggerEvent: true,
       axisLine: {show: false}, axisTick: {show: false},
       axisLabel: {
-        formatter: (v, i) => (rows[i].total ? `{total|${v}}` : `{c|${v}}  {e${rows[i].edge}|●}`),
-        rich: {
-          c: {fontWeight: 700, color: css_var("--text-primary")},
-          total: {fontWeight: 700, color: css_var("--text-secondary")},
-          eE1: {color: css_var("--e1")},
-          eE2: {color: css_var("--e2")},
-        },
+        formatter: (v, i) => (rows[i].total ? `{total|${v}}` : `{c|${v}}  {e${edges_of(b).indexOf(rows[i].edge)}|●}`),
+        rich: Object.assign(
+          {c: {fontWeight: 700, color: css_var("--text-primary")}, total: {fontWeight: 700, color: css_var("--text-secondary")}},
+          ...edges_of(b).map((e, i) => ({[`e${i}`]: {color: edge_color(e)}})),  // 엣지 수만큼 점 색
+        ),
       },
     },
     series: [{
@@ -92,7 +90,7 @@ function render_client_table(s) {  // 4.3.6 ③ 클라별 담당 엣지, 정확�
   const L = lit();
   const R = b.config.rounds;
   const comp = b.assignment.edge_composition;
-  const clients = Object.keys(comp).sort().flatMap(e => [...comp[e].clients].sort().map(c => [c, e]));
+  const clients = nsort(Object.keys(comp)).flatMap(e => nsort(comp[e].clients).map(c => [c, e]));
 
   const table = document.createElement("table");
   table.className = "tbl";
@@ -106,13 +104,16 @@ function render_client_table(s) {  // 4.3.6 ③ 클라별 담당 엣지, 정확�
       const ok = b.comm.filter(x => x.src === c && x.round === i + 1 && x.ok);
       return ok.length ? ok.reduce((a, x) => a + x.latency_ms, 0) / ok.length : null;
     });
-    const fails = b.comm.filter(x => x.src === c && x.round <= s.round && !x.ok).length;
+    const fails = b.comm.filter(x => x.src === c && x.round <= s.round && !x.ok && is_measured(x)).length;
+    const tests = b.comm.filter(x => x.src === c && x.round <= s.round && !x.ok && !is_measured(x)).length;
 
     const tr = document.createElement("tr");
     if (L && !L.clients.has(c)) tr.className = "dim";
     const name = document.createElement("td");
-    name.innerHTML = `<i class="dot ${e === "E1" ? "e1" : "e2"}"></i> `;
-    name.append(`${c} (${e})`);
+    const dot = document.createElement("i");
+    dot.className = "dot";
+    dot.style.background = edge_color(e);
+    name.append(dot, ` ${c} (${e})`);
     const cells = [
       sparkline(per_round(x => x.acc), s.round, v => (v * 100).toFixed(1) + "%"),
       sparkline(per_round(x => x.train_loss), s.round, v => v.toFixed(3)),
@@ -120,7 +121,8 @@ function render_client_table(s) {  // 4.3.6 ③ 클라별 담당 엣지, 정확�
     ].map(sp => { const td = document.createElement("td"); td.appendChild(sp); return td; });
     const fail_td = document.createElement("td");
     fail_td.className = "num" + (fails ? " bad" : "");
-    fail_td.textContent = String(fails);
+    fail_td.textContent = tests ? `${fails} (시험 ${tests})` : String(fails);  // 일부러 넣은 시험 요청은 따로
+    fail_td.title = "실제 실패 수 (괄호 = 일부러 넣은 시험 요청 수)";
     tr.append(name, ...cells, fail_td);
     const who = {type: "client", id: c};
     tr.onmouseenter = () => set_hover(who);

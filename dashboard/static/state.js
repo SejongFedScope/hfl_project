@@ -46,13 +46,27 @@ async function fetch_json(url) {
   return res.json();
 }
 
-function client_edge(b) {  // {C1: "E1", ...}
+function client_edge(b) {  // {C1: "E1", ...} (미배정 클라는 없음)
   const out = {};
   for (const [e, cs] of Object.entries(b.assignment.assignment)) cs.forEach(c => { out[c] = e; });
   return out;
 }
 
-function edge_color(e) { return e === "E1" ? css_var("--e1") : css_var("--e2"); }
+function nsort(xs) { return [...xs].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})); }  // C2 < C10
+
+function edges_of(b) { return nsort(Object.keys(b.assignment.assignment)); }
+
+function edge_color(e) {  // 엣지 순서대로 파랑·청록·보라, 4번째부터는 회색 (이름 라벨이 항상 같이 붙음)
+  const i = state.bundle ? edges_of(state.bundle).indexOf(e) : -1;
+  return css_var(["--e1", "--e2", "--e3"][i] || "--text-muted");
+}
+
+function draw(chart, option) {  // 매번 비우고 처음부터 그림
+  chart.clear();  // ECharts 트리는 노드 수가 줄어드는 갱신에서 내부 오류(__edge)가 나서 이전 그림과 비교 자체를 안 하게 함
+  chart.setOption(option);
+}
+
+function is_measured(x) { return x.kind !== "injected"; }  // 명세: 측정값과 일부러 넣은 시험 기록을 구분
 
 function same_target(a, b) { return a && b && a.type === b.type && a.id === b.id; }
 
@@ -112,14 +126,37 @@ function clear_pin() {  // Esc / 칩 ✕ = 해제
   notify();
 }
 
+function done_rounds(b) {  // 중앙 집계까지 끝난 라운드 수 (중간에 죽은 실험은 계획보다 적음)
+  return b.train.filter(x => x.target === "global").reduce((m, x) => Math.max(m, x.round), 0);
+}
+
 function update_round_label() {
-  const total = state.bundle ? state.bundle.config.rounds : "–";
-  document.getElementById("round_label").textContent = `라운드 ${state.round} / ${total}`;
+  const b = state.bundle;
+  const el = document.getElementById("round_label");
+  if (!b) { el.textContent = "라운드 – / –"; return; }
+  const done = done_rounds(b), plan = b.config.rounds;
+  el.textContent = done < plan ? `라운드 ${state.round} / ${done} (계획 ${plan}, 끝난 라운드까지만)` : `라운드 ${state.round} / ${plan}`;
+}
+
+function render_legend(b) {  // 범례의 엣지 목록은 실험 설정에서 만듦 (엣지 수가 바뀌어도 맞게)
+  const group = document.getElementById("legend_edges");
+  const keys = edges_of(b).map(e => {
+    const span = document.createElement("span");
+    span.className = "key";
+    const dot = document.createElement("i");
+    dot.className = "dot";
+    dot.style.background = edge_color(e);
+    span.append(dot, e);
+    return span;
+  });
+  const title = document.createElement("b");
+  title.textContent = "엣지";
+  group.replaceChildren(title, ...keys);
 }
 
 function set_round(r) {
   if (!state.bundle) return;
-  state.round = Math.max(1, Math.min(r, state.bundle.config.rounds));
+  state.round = Math.max(1, Math.min(r, Math.max(1, done_rounds(state.bundle))));
   document.getElementById("round").value = state.round;
   update_round_label();
   notify();
@@ -137,8 +174,10 @@ async function load_bundle(exp) {  // 4.2 로그 API → state.bundle
   state.pinned = null;
   state.hover = null;
   document.getElementById("pin_chip").hidden = true;
-  document.getElementById("round").max = state.bundle.config.rounds;
-  set_status("");
+  const done = done_rounds(state.bundle);
+  document.getElementById("round").max = Math.max(1, done);
+  render_legend(state.bundle);
+  set_status(done ? "" : `${exp}: 아직 끝난 라운드가 없음 (학습·통신 기록 없음). 배정·데이터 분포만 표시`, done === 0);
   set_round(state.round);
 }
 
@@ -147,8 +186,9 @@ async function load_compare(exp) {  // ④ 배정 방식 비교용 두 번째 �
     state.compare_bundle = await fetch_json(`/api/${encodeURIComponent(exp)}/bundle`);
     state.compare_exp = exp;
   } catch (err) {
+    state.compare_bundle = null;  // 예전 비교 실험이 남아 있으면 선택 상자와 내용이 달라짐
+    state.compare_exp = exp;
     set_status(`비교 실험을 불러오지 못함: ${err.message}`, true);
-    return;
   }
   notify();
 }

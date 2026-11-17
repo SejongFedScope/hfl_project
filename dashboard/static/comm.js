@@ -1,6 +1,6 @@
 function link_rank(b, src, dst) {  // 통신 히트맵 행 순서: 엣지별 클라 → 엣지 → runner
   const ce = client_edge(b);
-  const edges = Object.keys(b.assignment.assignment).sort();
+  const edges = edges_of(b);
   if (src in ce) return edges.indexOf(ce[src]) * 100 + Number(src.slice(1)) + (ce[src] === dst ? 0 : 50);
   if (edges.includes(src)) return 1000 + edges.indexOf(src);
   return 2000;
@@ -71,7 +71,7 @@ function render_comm_heatmap(s) {  // 4.3.7 ② 링크 × 라운드, 색 = 성�
   const text = base_text();
   const cell_w = (chart.getWidth() - 90) / rounds.length;
   const show_num = cell_w >= 30, show_fail = cell_w >= 64;  // 실패 글자(ReadTimeout 등)는 더 넓어야 들어감
-  chart.setOption({
+  draw(chart, {
     animation: false,
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},

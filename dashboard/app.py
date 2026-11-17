@@ -18,19 +18,28 @@ app.config["LOG_ROOT"] = BASE_DIR / load_config()["log_dir"]  # --sample 이면 
 
 
 def exp_names():
-    """LOG_ROOT 아래에서 config.json 이 있는 폴더 이름 = 실험 ID"""
+    """LOG_ROOT 아래에서 설정·분할·배정 파일이 다 있는 폴더 이름 = 실험 ID
+    (runner 가 시작할 때 세 파일을 같이 씀 → 하나라도 없으면 깨진 폴더라 뺌)"""
     root = app.config["LOG_ROOT"]
     if not root.exists():
         return []
-    return sorted(p.name for p in root.iterdir() if (p / "config.json").exists())
+    need = ("config.json", "split.json", "assignment.json")
+    return sorted(p.name for p in root.iterdir() if all((p / f).exists() for f in need))
 
 
 def read_jsonl(path):
-    """JSONL → dict 리스트. 파일이 없으면 빈 리스트 (실행 도중 멈춘 실험)"""
+    """JSONL → dict 리스트. 파일이 없으면 빈 리스트 (실행 도중 멈춘 실험)
+    쓰다가 끊긴 줄(프로세스가 죽은 경우)은 건너뜀"""
     if not path.exists():
         return []
+    rows = []
     with open(path, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        for line in f:
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue  # 빈 줄·잘린 줄
+    return rows
 
 
 @app.get("/")

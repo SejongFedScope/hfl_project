@@ -31,16 +31,18 @@ function kpi_values(b, r) {
   const global_at = t => b.train.find(x => x.target === "global" && x.round === t);
   const now = global_at(r);
   const prev = global_at(r - 1);
-  const reqs = b.comm.filter(x => x.round === r);  // round 0 = 시작 설정 요청이라 빠짐
+  const all_reqs = b.comm.filter(x => x.round === r);  // round 0 = 시작 설정 요청이라 빠짐
+  const reqs = all_reqs.filter(is_measured);  // 성공률·지연은 실제 측정 요청만 (명세: 주입한 시험 기록과 구분)
   const fails = reqs.filter(x => !x.ok);
+  const injected = all_reqs.filter(x => !is_measured(x));
   const ok_lat = reqs.filter(x => x.ok).map(x => x.latency_ms);
   const dur = b.train.find(x => x.target === "round" && x.round === r);
   const bytes_of = x => (x.req_bytes || 0) + (x.bytes || 0);
   return {
-    now, prev, reqs, fails, ok_lat, dur,
+    now, prev, reqs, fails, ok_lat, dur, injected,
     n409: fails.filter(x => x.status === 409).length,
     total_bytes: b.comm.filter(x => x.round <= r).reduce((a, x) => a + bytes_of(x), 0),
-    round_bytes: reqs.reduce((a, x) => a + bytes_of(x), 0),
+    round_bytes: all_reqs.reduce((a, x) => a + bytes_of(x), 0),
   };
 }
 
@@ -53,7 +55,11 @@ function render_kpi(s) {
 
   const ce = client_edge(b);
   const joined = new Set(b.train.filter(x => x.round === r && x.participated).map(x => x.target));
-  const per_edge = Object.keys(b.assignment.assignment).sort().map(e => {
+  if (!done_rounds(b)) {  // 시작 직후 죽은 실험: 숫자 대신 이유를 보여 줌
+    document.getElementById("kpi").replaceChildren(make_tile("진행 상황", "0 라운드", `계획 ${b.config.rounds}라운드 중 끝난 라운드 없음`, "down"));
+    return;
+  }
+  const per_edge = edges_of(b).map(e => {
     const cs = Object.keys(ce).filter(c => ce[c] === e);
     return `${e} ${cs.filter(c => joined.has(c)).length}/${cs.length}`;
   });
@@ -77,7 +83,7 @@ function render_kpi(s) {
   }
 
   const rate = v.reqs.length ? (v.reqs.length - v.fails.length) / v.reqs.length : 1;
-  const fail_sub = `실패 ${v.fails.length - v.n409}건 · 409 ${v.n409}건`;
+  const fail_sub = `실패 ${v.fails.length - v.n409}건 · 409 ${v.n409}건` + (v.injected.length ? ` · 시험 요청 ${v.injected.length}건 별도` : "");
   tiles.push(make_tile("요청 성공률", fmt_pct(rate), fail_sub, v.fails.length ? "down" : ""));
 
   const mean = v.ok_lat.length ? v.ok_lat.reduce((a, x) => a + x, 0) / v.ok_lat.length : 0;
