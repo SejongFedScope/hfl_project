@@ -23,9 +23,9 @@ function esc(s) {  // 툴팁은 HTML 이라 로그 값을 그대로 넣지 않�
 function bind_focus(chart, target_of) {  // 패널 공통: 올림 = 강조, 클릭 = 고정
   if (chart.__bound) return;
   chart.__bound = true;
-  chart.on("mouseover", p => { const t = target_of(p); if (t) set_hover(t); });
+  chart.on("mouseover", p => { const t = target_of(p, false); if (t) set_hover(t); });
   chart.on("mouseout", () => set_hover(null));
-  chart.on("click", p => { const t = target_of(p); if (t) set_pin(t); });
+  chart.on("click", p => { const t = target_of(p, true); if (t) set_pin(t); });  // target_of 두 번째 인자 = 클릭인지
 }
 
 const DIM = 0.2;  // 강조 대상이 아닌 것의 불투명도

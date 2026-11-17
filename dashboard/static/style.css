@@ -152,3 +152,28 @@ body {
   .panels { grid-template-columns: 1fr; }
   .hint { margin-left: 0; }
 }
+
+#p_requests, #p_clients { overflow: auto; }
+#p_compare { display: flex; flex-direction: column; gap: 4px; }
+.sub_chart { flex: 1 1 45%; min-height: 100px; }
+.sub_table .tbl td, .sub_table .tbl th { padding: 3px 8px; }
+.sub_table { flex: 0 1 auto; overflow: auto; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.tbl caption { caption-side: top; text-align: left; padding: 0 0 4px; color: var(--text-muted); }
+.tbl th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface);
+  text-align: left; font-weight: 600; color: var(--text-secondary);
+  padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.tbl td { padding: 4px 8px; border-bottom: 1px solid var(--hairline); white-space: nowrap; color: var(--text-primary); }
+.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tbl .bad { color: var(--critical); font-weight: 700; }
+.tbl .diff { font-weight: 700; }
+.tbl tbody tr { cursor: pointer; }
+.tbl tbody tr:hover td { background: var(--sunken); }
+.tbl tr.dim td { opacity: 0.2; }
+.tbl tr.row_critical td:first-child { box-shadow: inset 3px 0 0 var(--critical); }
+.tbl tr.row_warning td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+.spark { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.spark svg { display: block; }
+.spark b { font-weight: 600; min-width: 40px; }

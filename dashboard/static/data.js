@@ -15,7 +15,7 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
     rows.push({key: e, label: `${e} 합 · 숫자 ${covered}/10`, edge: e, counts: comp[e].digit_counts, target: {type: "edge", id: e}, total: true});
   }
   const max = Math.max(...rows.flatMap(r => r.counts));
-  const show_num = (chart.getWidth() - 120) / 10 >= 32;  // 칸이 좁으면 숫자 숨김 (툴팁엔 그대로)
+  const show_num = (chart.getWidth() - 120) / 10 >= 26;  // 칸이 좁으면 숫자 숨김 (툴팁엔 그대로)
 
   const data = [];
   rows.forEach((row, yi) => {
@@ -67,6 +67,70 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
   });
 }
 
-function render_client_table(state) {}  // TODO 4.3.6 ③ 클라별 담당 엣지, 손실·정확도·지연 작은 추이선, 실패 수
+function sparkline(values, cur, fmt) {  // 작은 추이선 + 선택 라운드 점·값 (숫자만 넣어서 만든 SVG)
+  const w = 52, h = 16, pts = values.map((v, i) => [i, v]).filter(([, v]) => v !== null);
+  const span = document.createElement("span");
+  span.className = "spark";
+  if (!pts.length) { span.textContent = "–"; return span; }
+  const vs = pts.map(([, v]) => v);
+  const lo = Math.min(...vs), hi = Math.max(...vs), n = Math.max(values.length - 1, 1);
+  const xy = (i, v) => [2 + (i / n) * (w - 4), hi === lo ? h / 2 : h - 2 - ((v - lo) / (hi - lo)) * (h - 4)];
+  const line = pts.map(([i, v]) => xy(i, v).map(c => c.toFixed(1)).join(",")).join(" ");
+  const now = values[cur - 1];
+  const dot = now === null || now === undefined ? "" : (() => { const [x, y] = xy(cur - 1, now); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="var(--pick)"/>`; })();
+  span.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${line}" fill="none" stroke="var(--text-muted)" stroke-width="1.5"/>${dot}</svg>`;
+  const val = document.createElement("b");
+  val.textContent = now === null || now === undefined ? "–" : fmt(now);
+  span.appendChild(val);
+  return span;
+}
+
+function render_client_table(s) {  // 4.3.6 ③ 클라별 담당 엣지, 정확도·학습 손실·지연 추이, 실패 수
+  const b = s.bundle;
+  if (!b) return;
+  const host = document.getElementById("p_clients");
+  const L = lit();
+  const R = b.config.rounds;
+  const comp = b.assignment.edge_composition;
+  const clients = Object.keys(comp).sort().flatMap(e => [...comp[e].clients].sort().map(c => [c, e]));
+
+  const table = document.createElement("table");
+  table.className = "tbl";
+  table.innerHTML = `<caption>주황 점 = 라운드 ${s.round} · 정확도는 클라 학습 직후 공통 시험 데이터 기준 · 실패는 R${s.round}까지 누적</caption>
+    <thead><tr><th>클라</th><th>정확도</th><th>학습 손실</th><th>평균 지연</th><th class="num">실패</th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  for (const [c, e] of clients) {
+    const rec = r => b.train.find(x => x.target === c && x.round === r);
+    const per_round = f => [...Array(R).keys()].map(i => { const x = rec(i + 1); return x ? f(x) : null; });
+    const lat = [...Array(R).keys()].map(i => {
+      const ok = b.comm.filter(x => x.src === c && x.round === i + 1 && x.ok);
+      return ok.length ? ok.reduce((a, x) => a + x.latency_ms, 0) / ok.length : null;
+    });
+    const fails = b.comm.filter(x => x.src === c && x.round <= s.round && !x.ok).length;
+
+    const tr = document.createElement("tr");
+    if (L && !L.clients.has(c)) tr.className = "dim";
+    const name = document.createElement("td");
+    name.innerHTML = `<i class="dot ${e === "E1" ? "e1" : "e2"}"></i> `;
+    name.append(`${c} (${e})`);
+    const cells = [
+      sparkline(per_round(x => x.acc), s.round, v => (v * 100).toFixed(1) + "%"),
+      sparkline(per_round(x => x.train_loss), s.round, v => v.toFixed(3)),
+      sparkline(lat, s.round, v => Math.round(v) + " ms"),
+    ].map(sp => { const td = document.createElement("td"); td.appendChild(sp); return td; });
+    const fail_td = document.createElement("td");
+    fail_td.className = "num" + (fails ? " bad" : "");
+    fail_td.textContent = String(fails);
+    tr.append(name, ...cells, fail_td);
+    const who = {type: "client", id: c};
+    tr.onmouseenter = () => set_hover(who);
+    tr.onmouseleave = () => set_hover(null);
+    tr.onclick = () => set_pin(who);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  host.replaceChildren(table);
+}
 
 subscribe(render_data_heatmap);
+subscribe(render_client_table);
