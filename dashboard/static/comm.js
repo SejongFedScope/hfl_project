@@ -10,6 +10,12 @@ function fail_text(x) { return x.status ? String(x.status) : (x.error || "실패
 
 function node_lit(L, id) { return !L || L.clients.has(id) || L.edges.has(id); }
 
+function link_lit(L, src, dst) {  // 중앙 S·runner 는 강조 대상이 아니라서 클라·엣지 쪽 끝만 봄
+  if (!L) return true;
+  const ends = [src, dst].filter(id => /^[CE]\d+$/.test(id));
+  return ends.length > 0 && ends.every(id => node_lit(L, id));
+}
+
 function link_target(src) {  // 링크를 고르면 보낸 쪽(클라·엣지)을 강조, runner 요청은 없음
   if (/^C\d+$/.test(src)) return {type: "client", id: src};
   if (/^E\d+$/.test(src)) return {type: "edge", id: src};
@@ -41,7 +47,7 @@ function render_comm_heatmap(s) {  // 4.3.7 ② 링크 × 라운드, 색 = 성�
       const bad = cell.filter(x => !x.ok);
       const mean = ok.length ? ok.reduce((a, x) => a + x.latency_ms, 0) / ok.length : 0;
       max_lat = Math.max(max_lat, mean);
-      const on = node_lit(L, src) && node_lit(L, dst);
+      const on = link_lit(L, src, dst);
       const injected = bad.length && bad.every(x => x.kind === "injected");
       const lines = cell.map(x => `${esc(x.api)} · v${x.model_version} · ${x.ok ? Math.round(x.latency_ms) + " ms" : "<b>" + esc(fail_text(x)) + "</b>"}${x.kind === "injected" ? " (injected)" : ""}`);
       (bad.length ? fail_data : data).push({
@@ -63,7 +69,8 @@ function render_comm_heatmap(s) {  // 4.3.7 ② 링크 × 라운드, 색 = 성�
   });
 
   const text = base_text();
-  const show_num = (chart.getWidth() - 90) / rounds.length >= 30;
+  const cell_w = (chart.getWidth() - 90) / rounds.length;
+  const show_num = cell_w >= 30, show_fail = cell_w >= 64;  // 실패 글자(ReadTimeout 등)는 더 넓어야 들어감
   chart.setOption({
     animation: false,
     textStyle: text,
@@ -88,7 +95,7 @@ function render_comm_heatmap(s) {  // 4.3.7 ② 링크 × 라운드, 색 = 성�
     },
     series: [
       {type: "heatmap", data, emphasis: {disabled: true}, label: {show: show_num, fontSize: 10}},
-      {type: "heatmap", data: fail_data, emphasis: {disabled: true}, label: {show: true, fontSize: 10}},  // 실패 칸: 색 고정 (지연 색 안 씀)
+      {type: "heatmap", data: fail_data, emphasis: {disabled: true}, label: {show: show_fail, fontSize: 10}},  // 실패 칸: 색 고정, 좁으면 글자 숨김 (툴팁·요청 목록엔 그대로)
     ],
   });
   bind_focus(chart, (p, is_click) => {
@@ -117,7 +124,7 @@ function render_request_table(s) {  // 4.3.8 ② 선택 라운드 요청 목록
   const tbody = document.createElement("tbody");
   reqs.forEach((x, i) => {
     const tr = document.createElement("tr");
-    const on = node_lit(L, x.src) && node_lit(L, x.dst);
+    const on = link_lit(L, x.src, x.dst);
     if (!on) tr.className = "dim";
     if (!x.ok) tr.classList.add(x.kind === "injected" ? "row_warning" : "row_critical");
     const cells = [
