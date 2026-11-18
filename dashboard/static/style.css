@@ -181,3 +181,4 @@ body {
 .spark svg { display: block; }
 .spark b { font-weight: 600; min-width: 36px; }
 .sub_table caption { white-space: normal; color: var(--text-secondary); font-weight: 600; line-height: 1.4; }
+.source { padding: 2px 8px; border-radius: 4px; background: var(--sunken); border: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; white-space: nowrap; }

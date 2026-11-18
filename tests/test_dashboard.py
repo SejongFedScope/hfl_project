@@ -3,7 +3,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from dashboard.app import SAMPLE_ROOT, app
+from dashboard.app import REGIONS, SAMPLE_ROOT, app
 
 
 def _logs_with_edge_cases():
@@ -37,6 +37,10 @@ def test_edge_cases():
 
         empty = c.get("/api/exp_empty/bundle").get_json()
         assert empty["train"] == [] and empty["comm"] == [] and empty["assignment"]["assignment"]
+
+        html = c.get("/").get_data(as_text=True)  # Jinja 템플릿: 패널 8개·스크립트 6개가 목록대로 나오고 로그 출처가 보임
+        assert all(f'id="{p["id"]}"' in html for r in REGIONS for p in r["panels"]) and html.count('<script src="/static/') == 7
+        assert "실제 로그" in html and "{%" not in html and "{{" not in html
 
         app.config["LOG_ROOT"] = root / "없는_폴더"
         assert c.get("/api/experiments").get_json() == []

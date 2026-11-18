@@ -1,17 +1,17 @@
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HFL 모니터</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="/static/style.css">
-<script src="/static/vendor/echarts.min.js"></script>
-</head>
-<body>
+{% extends "base.html" %}
+
+{% macro panel(p) %}
+<div class="panel">
+  <h3>{{ p.title }}<span class="tag">{{ p.tag }}</span></h3>
+  <p class="desc">{{ p.desc }}</p>
+  <div class="chart" id="{{ p.id }}"></div>
+</div>
+{% endmacro %}
+
+{% block body %}
 <header id="top">
   <h1>계층적 연합학습 모니터</h1>
+  <span class="source" title="대시보드가 읽는 로그 폴더">{{ log_source }}</span>
   <label class="control">실험 <select id="exp"></select></label>
   <label class="control">비교 실험 <select id="compare_exp"></select></label>
   <div class="control round_control">
@@ -34,41 +34,13 @@
 </section>
 
 <main class="regions">
-  <section class="region" id="r1">
-    <h2><span class="badge">1</span>계층 구조·배정<small>누가 어느 엣지에 붙었고, 배정이 잘 됐나</small></h2>
+  {% for r in regions %}
+  <section class="region" id="r{{ r.no }}">
+    <h2><span class="badge">{{ r.no }}</span>{{ r.title }}<small>{{ r.question }}</small></h2>
     <div class="panels">
-      <div class="panel"><h3>계층 트리<span class="tag">구조</span></h3><p class="desc">중앙–엣지–클라 연결, 엣지 색, 참여·실패 상태</p><div class="chart" id="p_tree"></div></div>
-      <div class="panel"><h3>선호·배정 행렬<span class="tag">배정</span></h3><p class="desc">클라 × 엣지 양측 선호 순위와 실제 배정, 위반 수</p><div class="chart" id="p_assign"></div></div>
+      {% for p in r.panels %}{{ panel(p) }}{% endfor %}
     </div>
   </section>
-  <section class="region" id="r2">
-    <h2><span class="badge">2</span>통신 상태<small>어느 요청이 느리거나 실패했나</small></h2>
-    <div class="panels">
-      <div class="panel"><h3>통신 히트맵<span class="tag">링크</span></h3><p class="desc">링크 × 라운드 지연, 빨강 = 실패·409</p><div class="chart" id="p_comm_heatmap"></div></div>
-      <div class="panel"><h3>요청 목록<span class="tag">요청</span></h3><p class="desc">선택 라운드의 요청·상태 코드·모델 버전</p><div class="chart" id="p_requests"></div></div>
-    </div>
-  </section>
-  <section class="region" id="r3">
-    <h2><span class="badge">3</span>데이터·클라 학습<small>숫자 분포 차이가 클라 학습으로 어떻게 이어지나</small></h2>
-    <div class="panels">
-      <div class="panel"><h3>데이터 분포<span class="tag">데이터</span></h3><p class="desc">클라 × 숫자 표본 수, 엣지별 합, 숫자 쏠림</p><div class="chart" id="p_data"></div></div>
-      <div class="panel"><h3>클라 로그<span class="tag">클라</span></h3><p class="desc">클라별 학습 손실·정확도·지연 추이, 실패 수</p><div class="chart" id="p_clients"></div></div>
-    </div>
-  </section>
-  <section class="region" id="r4">
-    <h2><span class="badge">4</span>공동 모델·실험 비교<small>공동 모델 성능과 배정 방식 차이</small></h2>
-    <div class="panels">
-      <div class="panel"><h3>학습 추세<span class="tag">공동 모델</span></h3><p class="desc">라운드별 정확도·손실, 라운드 × 숫자 정확도</p><div class="chart" id="p_trend"></div></div>
-      <div class="panel"><h3>배정 방식 비교<span class="tag">비교</span></h3><p class="desc">선호 vs 무작위 정확도·선호 충족도·엣지 구성</p><div class="chart" id="p_compare"></div></div>
-    </div>
-  </section>
+  {% endfor %}
 </main>
-
-<script src="/static/state.js"></script>
-<script src="/static/kpi.js"></script>
-<script src="/static/structure.js"></script>
-<script src="/static/comm.js"></script>
-<script src="/static/data.js"></script>
-<script src="/static/global.js"></script>
-</body>
-</html>
+{% endblock %}
