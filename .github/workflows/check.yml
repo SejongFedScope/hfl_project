@@ -1,5 +1,4 @@
-# push·PR 마다 처음부터 실행해서 깨진 곳이 없는지 자동 확인 (README 실행 순서 그대로)
-name: 검사
+name: 검사  # push·PR 마다 처음부터 실행해서 깨진 곳이 없는지 자동 확인 (README 실행 순서 그대로)
 
 on:
   push:

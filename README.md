@@ -1,5 +1,7 @@
 # hfl_project
 
+[![검사](https://github.com/SejongFedScope/hfl_project/actions/workflows/check.yml/badge.svg)](https://github.com/SejongFedScope/hfl_project/actions/workflows/check.yml)  push 마다 단위 검사 → 실험 실행 → 보고서 → 필수 6항목 점검을 자동으로 돌림 (`.github/workflows/check.yml`)
+
 계층적 연합학습 환경 + 학습·통신 모니터링 (웹기반시스템 Project 1)
 
 중앙 서버 1 · 엣지 서버 2 · 가상 클라이언트 6, MNIST 숫자별 분할(non-IID), FedAvg 2단계 집계, 선호(matching)·무작위 배정 비교, 학습·배정·통신 로그, 4영역 모니터링 화면.
