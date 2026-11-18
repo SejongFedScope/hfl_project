@@ -33,7 +33,7 @@
 | `global` | 중앙 | round, model_version(집계 결과 버전), eval_data(test), acc, loss, acc_by_digit[10], edge_n |
 | `C1`~`C6` | runner | round, model_version(학습 시작 버전), edge, n, train_loss, eval_data, acc, loss, acc_by_digit, participated |
 | `E1`, `E2` | 엣지 | round, model_version, clients, client_n, n_samples |
-| `round` | runner | round, duration_ms (라운드 시작~중앙 집계 확인) |
+| `round` | runner | round, model_version(집계 결과 버전), duration_ms (라운드 시작~중앙 집계 확인) |
 
 모든 줄에 `exp`, `kind`(measured) 포함. 평가 대상 모델(`target`)과 평가 데이터(`eval_data`)를 같이 기록.
 

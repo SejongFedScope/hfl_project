@@ -4,7 +4,7 @@
 
 중앙 서버 1 · 엣지 서버 2 · 가상 클라이언트 6, MNIST 숫자별 분할(non-IID), FedAvg 2단계 집계, 선호(matching)·무작위 배정 비교, 학습·배정·통신 로그, 4영역 모니터링 화면.
 
-> 지금은 **뼈대 + 함수 틀**만 있음. 파일 맨 위 설명과 함수 docstring에 담당·할 일(WBS 번호)·입출력이 있고, 본문은 `NotImplementedError`. WBS 번호·일정은 팀 Notion.
+> 파일 맨 위 설명과 함수 docstring에 담당·할 일(WBS 번호)·입출력이 있음. WBS 번호·일정은 팀 Notion.
 
 ## 담당
 
@@ -23,15 +23,29 @@
   - push 전에 `git pull --rebase` 로 최신 `main` 받기.
   - 실행 안 되는 코드(import 오류 등)는 올리지 않기. 다른 사람이 받자마자 깨짐.
 
-## 실행 (구현 후)
+## 실행
 
-Python 3.11 이상.
+Python 3.11 이상. **3.11·3.12 권장**: `numpy==1.26.4` 는 3.13 용 설치 파일이 없어서, 3.13 에서는 소스 빌드로 설치돼 오래 걸림 (macOS 는 Xcode Command Line Tools 필요).
+
+Windows (PowerShell):
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+```
 
+macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+가상환경을 켠 뒤에는 두 OS 모두 같은 명령:
+
+```bash
 python -m tests.test_learning      # 집계 손계산 · 분할 중복
 python -m tests.test_server        # 배정 위반 · 409
 python -m tests.test_dashboard     # 로그 API: 깨진 폴더 · 잘린 줄 · 경로 차단
@@ -40,9 +54,13 @@ python -m dashboard.app            # http://127.0.0.1:5050
 python -m dashboard.app --sample   # 실제 로그 대신 dashboard/sample_logs/ 시험 로그로 화면 보기
 ```
 
-서버를 따로 띄울 때 (터미널 4개):
+- `run_all` 은 약 10초 (첫 실행은 MNIST 다운로드로 더 걸림). 서버 출력은 `logs/servers.log`
+- 같은 실험을 다시 돌리면 그 실험 폴더의 로그를 지우고 새로 씀. 시드 고정이라 결과는 같음
+- 포트(5003, 5001, 5002)가 이미 사용 중이면 시작하지 않음 → 떠 있는 서버를 끄거나 `configs/default.json` 주소 변경
 
-```powershell
+서버를 따로 띄울 때 (터미널 4개, 각각 가상환경 켜고):
+
+```bash
 python -m servers.central --port 5003
 python -m servers.edge --id E1 --port 5001
 python -m servers.edge --id E2 --port 5002
@@ -51,6 +69,7 @@ python -m runner.client_runner --method pref        # random, 또는 --inject
 
 - 주소는 `localhost` 말고 `127.0.0.1` (Windows 에서 localhost 는 요청마다 약 2초 지연)
 - MNIST 는 첫 실행 때 `data/` 에 자동 다운로드
+- 중앙 기본 포트가 5000 이 아닌 5003 인 이유: macOS 는 AirPlay 수신 기능이 5000번을 씀
 
 ## 폴더
 
