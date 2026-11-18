@@ -212,7 +212,8 @@ async function init() {
     sel.add(new Option(e, e));
     cmp.add(new Option(e, e));
   }
-  cmp.value = exps.find(e => e !== exps[0]) ?? exps[0];  // 처음엔 서로 다른 두 실험
+  const method = e => e.split("_")[1];  // exp_<배정방식>_seed..
+  cmp.value = exps.find(e => method(e) !== method(exps[0])) ?? exps.find(e => e !== exps[0]) ?? exps[0];  // 처음엔 배정 방식이 다른 실험과 비교
   sel.onchange = () => load_bundle(sel.value);
   cmp.onchange = () => load_compare(cmp.value);
   document.getElementById("round").oninput = ev => set_round(Number(ev.target.value));

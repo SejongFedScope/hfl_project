@@ -21,6 +21,8 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
   const now = g[cur];
   const worst = now ? now.acc_by_digit.indexOf(Math.min(...now.acc_by_digit)) : -1;
   const show_num = (chart.getWidth() - 40) / rounds.length >= 26 && (chart.getHeight() * 0.5) / 10 >= 13;
+  const all_acc = g.filter(Boolean).flatMap(x => x.acc_by_digit);
+  const acc_floor = all_acc.length ? Math.floor(Math.min(...all_acc) * 10) / 10 : 0;
 
   const cells = [];
   g.forEach((x, ri) => {
@@ -37,7 +39,7 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
           borderColor: is_worst ? css_var("--critical") : ri === cur ? ink : css_var("--surface"),
           borderWidth: is_worst || ri === cur ? 2 : 1,
         },
-        label: {opacity: on ? 1 : DIM, color: a >= 0.75 ? "#ffffff" : "#0b0b0b"},
+        label: {opacity: on ? 1 : DIM, color: (a - acc_floor) / (1 - acc_floor || 1) >= 0.5 ? "#ffffff" : "#0b0b0b"},
       });
     });
   });
@@ -72,7 +74,7 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
       {type: "category", gridIndex: 2, data: [...Array(10).keys()].map(String), inverse: true, axisTick: {show: false}, axisLine: {show: false},
         axisLabel: {color: ink, fontWeight: 700, fontSize: 10, interval: 0}},
     ],
-    visualMap: {show: false, seriesIndex: 2, min: 0, max: 1, inRange: {color: SEQ_BLUE}},
+    visualMap: {show: false, seriesIndex: 2, min: acc_floor, max: 1, inRange: {color: SEQ_BLUE}},  // 실제 값 범위에 맞춰 칸 색 차이가 보이게
     series: [
       {...line("공동 정확도", g.map(x => (x ? x.acc : null)), v => (v * 100).toFixed(1) + "%"), xAxisIndex: 0, yAxisIndex: 0},
       {...line("손실", g.map(x => (x ? x.loss : null)), v => Number(v).toFixed(3)), xAxisIndex: 1, yAxisIndex: 1},
@@ -105,7 +107,7 @@ function compare_metrics(b) {
   const durs = b.train.filter(x => x.target === "round").map(x => x.duration_ms);
   return [
     ["배정 방식", b.assignment.method === "pref" ? "선호(matching)" : b.assignment.method === "random" ? "무작위" : b.assignment.method],
-    ["평균 선호 순위 (낮을수록 좋음)", b.assignment.check.mean_pref_rank.toFixed(2) + "위"],
+    ["평균 선호 순위 (낮을수록 좋음)", b.assignment.check.mean_pref_rank == null ? "–" : b.assignment.check.mean_pref_rank.toFixed(2) + "위"],
     ["엣지별 숫자 종류", es.map(e => `${e} ${comp[e].digit_counts.filter(n => n > 0).length}`).join(" · ")],
     ["엣지 간 숫자 분포 차이 (0 = 같음)", es.length > 1 ? tv.toFixed(2) : "–"],
     ["마지막 라운드 공동 정확도", g.length ? (g[g.length - 1].acc * 100).toFixed(1) + "%" : "–"],

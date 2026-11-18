@@ -179,4 +179,4 @@ body {
 .tbl tr.row_warning td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
 .spark { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .spark svg { display: block; }
-.spark b { font-weight: 600; min-width: 40px; }
+.spark b { font-weight: 600; min-width: 36px; }

@@ -66,7 +66,7 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
 }
 
 function sparkline(values, cur, fmt) {  // 작은 추이선 + 선택 라운드 점·값 (숫자만 넣어서 만든 SVG)
-  const w = 52, h = 16, pts = values.map((v, i) => [i, v]).filter(([, v]) => v !== null);
+  const w = 44, h = 16, pts = values.map((v, i) => [i, v]).filter(([, v]) => v !== null);
   const span = document.createElement("span");
   span.className = "spark";
   if (!pts.length) { span.textContent = "–"; return span; }
@@ -121,7 +121,7 @@ function render_client_table(s) {  // 4.3.6 ③ 클라별 담당 엣지, 정확�
     ].map(sp => { const td = document.createElement("td"); td.appendChild(sp); return td; });
     const fail_td = document.createElement("td");
     fail_td.className = "num" + (fails ? " bad" : "");
-    fail_td.textContent = tests ? `${fails} (시험 ${tests})` : String(fails);  // 일부러 넣은 시험 요청은 따로
+    fail_td.textContent = tests ? `${fails}+시험${tests}` : String(fails);  // 일부러 넣은 시험 요청은 따로
     fail_td.title = "실제 실패 수 (괄호 = 일부러 넣은 시험 요청 수)";
     tr.append(name, ...cells, fail_td);
     const who = {type: "client", id: c};

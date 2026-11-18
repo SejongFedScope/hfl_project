@@ -145,7 +145,7 @@ function render_assign_matrix(s) {  // 4.3.3 ① 선호·배정 행렬
   });
 
   const ck = a.check;
-  const summary = `평균 선호 순위 ${ck.mean_pref_rank.toFixed(2)}위 · 미배정 ${ck.unassigned.length} · 중복 ${ck.duplicated.length} · 정원 위반 ${ck.capacity_violation.length}`;
+  const summary = `평균 선호 순위 ${ck.mean_pref_rank == null ? "–" : ck.mean_pref_rank.toFixed(2) + "위"} · 미배정 ${ck.unassigned.length} · 중복 ${ck.duplicated.length} · 정원 위반 ${ck.capacity_violation.length}`;
   const text = base_text();
   draw(chart, {
     animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
