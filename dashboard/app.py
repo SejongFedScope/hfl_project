@@ -57,7 +57,13 @@ REGIONS = [
         {"id": "p_trend", "title": "학습 추세", "tag": "공동 모델", "desc": "라운드별 정확도·손실, 라운드 × 숫자 정확도"},
         {"id": "p_compare", "title": "배정 방식 비교", "tag": "비교", "desc": "선호 vs 무작위 정확도·선호 충족도·엣지 구성"}]},
 ]
-SCRIPTS = ["state.js", "kpi.js", "structure.js", "comm.js", "data.js", "global.js"]  # state.js 가 먼저 (나머지가 subscribe 함)
+ANALYSIS = [  # '심층 분석' 탭: 큰 패널 4개 (2×2)
+    {"id": "p_local", "title": "클라 모델 vs 공동 모델", "tag": "연합 효과", "desc": "숫자별 정확도: 클라가 자기 데이터로 학습한 직후 모델과 공동 모델"},
+    {"id": "p_traffic", "title": "트래픽 흐름", "tag": "통신량", "desc": "클라 → 엣지 → 중앙으로 오간 바이트 (선택 라운드까지 누적, 요청+응답)"},
+    {"id": "p_rank", "title": "클라 정확도 순위 변화", "tag": "순위", "desc": "라운드마다 클라 모델 정확도 순위 (1 = 가장 높음)"},
+    {"id": "p_sim", "title": "클라 유사도", "tag": "군집", "desc": "숫자별 정확도가 얼마나 비슷한가 (코사인 유사도, 1 = 같음)"},
+]
+SCRIPTS = ["state.js", "kpi.js", "structure.js", "comm.js", "data.js", "global.js", "analysis.js"]  # state.js 가 먼저 (나머지가 subscribe 함)
 
 
 def log_source():
@@ -73,7 +79,7 @@ def log_source():
 
 @app.get("/")
 def index():
-    return render_template("index.html", regions=REGIONS, scripts=SCRIPTS, log_source=log_source())
+    return render_template("index.html", regions=REGIONS, analysis=ANALYSIS, scripts=SCRIPTS, log_source=log_source())
 
 
 @app.get("/api/experiments")

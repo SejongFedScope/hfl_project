@@ -133,6 +133,28 @@ def check_layout(browser, url, errors):
     pg.close()
 
 
+def check_tabs(browser, url, errors):
+    """심층 분석 탭: 패널 4개 그림, 선택 상태를 개요와 같이 씀, 새로고침해도 같은 탭, 돌아오면 개요 차트 크기 정상"""
+    pg = _open(browser, url, errors)
+    pg.evaluate("() => set_pin({type: 'client', id: 'C1'})")
+    pg.get_by_role("tab", name="심층 분석").click()
+    expect(pg.get_by_role("tab", name="심층 분석")).to_have_attribute("aria-selected", "true")
+    for pid in ("p_local", "p_traffic", "p_rank", "p_sim"):
+        assert pg.evaluate(f"() => chart_of('{pid}').getOption().series.length") > 0, pid
+    assert pg.evaluate("() => state.pinned.id") == "C1"  # 개요에서 고정한 게 그대로
+    sim = pg.evaluate("""() => { const o = chart_of('p_sim').getOption(); const ys = o.yAxis[0].data.map(v => v.split(' ')[0]);
+                                 return o.series[0].data.map(d => [ys[d.value[1]], ys[d.value[0]], d.itemStyle.opacity]); }""")
+    assert all(op == 1 for a, c, op in sim if "C1" in (a, c)) and all(op < 1 for a, c, op in sim if "C1" not in (a, c))  # C1 의 줄·열만 밝음
+    assert "가진 숫자" in pg.evaluate("() => chart_of('p_local').getOption().title[0].text")
+    assert pg.evaluate("() => [...document.querySelectorAll('.analysis .panel')].filter(p => p.scrollHeight > p.clientHeight).length") == 0
+    pg.reload()
+    pg.wait_for_function("() => typeof state !== 'undefined' && state.bundle !== null")
+    assert pg.evaluate("() => state.tab") == "analysis" and pg.locator("main.regions").is_hidden()
+    pg.get_by_role("tab", name="개요").click()
+    assert pg.evaluate("() => chart_of('p_tree').getWidth()") > 100  # 숨었다 나와도 차트 크기 정상
+    pg.close()
+
+
 def check_empty_run(browser, url, errors):
     """시작 직후 죽은 실험(기록 0개)도 오류 없이 안내 문구"""
     pg = _open(browser, url, errors)
@@ -189,7 +211,7 @@ def test_ui():
     try:
         with sync_playwright() as p:
             browser = _launch(p)
-            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout]),
+            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs]),
                     (empty_root, [check_empty_run]),
                     (live_root, [lambda b, u, e: check_live(b, u, e, live_root)])]
             for root, checks in plan:

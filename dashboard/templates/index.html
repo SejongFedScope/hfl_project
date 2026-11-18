@@ -12,6 +12,10 @@
 <header id="top">
   <h1>계층적 연합학습 모니터</h1>
   <span class="source" title="대시보드가 읽는 로그 폴더">{{ log_source }}</span>
+  <div class="tabs" role="tablist" aria-label="화면">
+    <button type="button" role="tab" data-tab-btn="overview" aria-selected="true">개요</button>
+    <button type="button" role="tab" data-tab-btn="analysis" aria-selected="false">심층 분석</button>
+  </div>
   <label class="control">실험 <select id="exp"></select></label>
   <label class="control">비교 실험 <select id="compare_exp"></select></label>
   <div class="control round_control">
@@ -33,7 +37,7 @@
   <span class="hint">마우스 올림 = 모든 패널 강조 · 클릭 = 고정 · Esc = 해제</span>
 </section>
 
-<main class="regions">
+<main class="regions" data-tab="overview">
   {% for r in regions %}
   <section class="region" id="r{{ r.no }}">
     <h2><span class="badge">{{ r.no }}</span>{{ r.title }}<small>{{ r.question }}</small></h2>
@@ -42,5 +46,9 @@
     </div>
   </section>
   {% endfor %}
+</main>
+
+<main class="analysis" data-tab="analysis" hidden>
+  {% for p in analysis %}{{ panel(p) }}{% endfor %}
 </main>
 {% endblock %}

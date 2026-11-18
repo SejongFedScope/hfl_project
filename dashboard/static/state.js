@@ -1,9 +1,18 @@
-const state = {exp: null, compare_exp: null, round: 1, hover: null, pinned: null, bundle: null, compare_bundle: null};  // hover·pinned = {type: "edge"|"client"|"digit", id}
+const state = {exp: null, compare_exp: null, round: 1, hover: null, pinned: null, bundle: null, compare_bundle: null, tab: "overview"};  // hover·pinned = {type: "edge"|"client"|"digit", id}
 const listeners = [];
 const charts = {};
 
-function subscribe(fn) { listeners.push(fn); }  // 패널마다 render 함수 등록
-function notify() { listeners.forEach(fn => fn(state)); }
+function subscribe(fn, tab = "overview") { listeners.push([fn, tab]); }  // 패널마다 render 함수 등록 (tab = 그 패널이 있는 탭, "all" = 항상)
+function notify() { listeners.forEach(([fn, tab]) => { if (tab === "all" || tab === state.tab) fn(state); }); }  // 안 보이는 탭은 그리지 않음
+
+function set_tab(tab) {  // 개요 / 심층 분석. 선택 상태(라운드·고정)는 두 탭이 같이 씀
+  state.tab = tab;
+  history.replaceState(null, "", tab === "analysis" ? "#analysis" : location.pathname);  // 새로고침해도 같은 탭
+  document.querySelectorAll("[data-tab]").forEach(el => { el.hidden = el.dataset.tab !== tab; });
+  document.querySelectorAll("[data-tab-btn]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tabBtn === tab)));
+  Object.values(charts).forEach(c => c.resize());  // 숨어 있던 동안 크기가 0 이 된 차트를 다시 맞춤
+  notify();
+}
 
 function css_var(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
@@ -281,6 +290,8 @@ async function init() {
     if (ev.key === "ArrowRight") set_round(state.round + 1);
   });
   document.getElementById("live").onchange = () => { set_status(""); update_live_status(); };
+  document.querySelectorAll("[data-tab-btn]").forEach(b => { b.onclick = () => set_tab(b.dataset.tabBtn); });
+  set_tab(location.hash === "#analysis" ? "analysis" : "overview");
   await load_compare(cmp.value);
   await load_bundle(sel.value);
   setInterval(poll, LIVE_MS);

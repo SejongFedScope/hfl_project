@@ -95,4 +95,4 @@ function render_kpi(s) {
   document.getElementById("kpi").replaceChildren(...tiles);
 }
 
-subscribe(render_kpi);
+subscribe(render_kpi, "all");

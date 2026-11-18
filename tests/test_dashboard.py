@@ -3,7 +3,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from dashboard.app import REGIONS, SAMPLE_ROOT, app
+from dashboard.app import ANALYSIS, REGIONS, SAMPLE_ROOT, SCRIPTS, app
 
 
 def _logs_with_edge_cases():
@@ -38,8 +38,9 @@ def test_edge_cases():
         empty = c.get("/api/exp_empty/bundle").get_json()
         assert empty["train"] == [] and empty["comm"] == [] and empty["assignment"]["assignment"]
 
-        html = c.get("/").get_data(as_text=True)  # Jinja 템플릿: 패널 8개·스크립트 6개가 목록대로 나오고 로그 출처가 보임
-        assert all(f'id="{p["id"]}"' in html for r in REGIONS for p in r["panels"]) and html.count('<script src="/static/') == 7
+        html = c.get("/").get_data(as_text=True)  # Jinja 템플릿: 개요·분석 패널과 스크립트가 목록대로 나오고 로그 출처가 보임
+        panel_ids = [p["id"] for r in REGIONS for p in r["panels"]] + [p["id"] for p in ANALYSIS]
+        assert all(f'id="{i}"' in html for i in panel_ids) and html.count('<script src="/static/') == len(SCRIPTS) + 1  # + echarts
         assert "실제 로그" in html and "{%" not in html and "{{" not in html
 
         app.config["LOG_ROOT"] = root / "없는_폴더"
