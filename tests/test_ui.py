@@ -75,6 +75,8 @@ def check_kpi(browser, url, errors):
     rate, sub = pg.evaluate(KPI)[3]
     assert rate == "100.0%" and "시험 요청 2건 별도" in sub, (rate, sub)
     expect(pg.locator("#p_requests tr.row_warning")).to_have_count(2)
+    pg.evaluate("() => set_pin({type: 'client', id: 'C1'})")  # 배정 밖 엣지로 보낸 시험 요청도 C1 요청이라 강조
+    expect(pg.locator("#p_requests tr.row_warning:not(.dim)")).to_have_count(2)
     pg.close()
 
 

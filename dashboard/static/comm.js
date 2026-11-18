@@ -10,10 +10,12 @@ function fail_text(x) { return x.status ? String(x.status) : (x.error || "실패
 
 function node_lit(L, id) { return !L || L.clients.has(id) || L.edges.has(id); }
 
-function link_lit(L, src, dst) {  // 중앙 S·runner 는 강조 대상이 아니라서 클라·엣지 쪽 끝만 봄
+function link_lit(L, src, dst) {  // 클라가 낀 요청은 그 클라 기준 (배정 밖 엣지로 보낸 요청도 그 클라 것), 아니면 엣지 기준. 중앙 S·runner 는 안 봄
   if (!L) return true;
-  const ends = [src, dst].filter(id => /^[CE]\d+$/.test(id));
-  return ends.length > 0 && ends.every(id => node_lit(L, id));
+  const clients = [src, dst].filter(id => /^C\d+$/.test(id));
+  if (clients.length) return clients.every(id => L.clients.has(id));
+  const edges = [src, dst].filter(id => /^E\d+$/.test(id));
+  return edges.length > 0 && edges.every(id => L.edges.has(id));
 }
 
 function link_target(src) {  // 링크를 고르면 보낸 쪽(클라·엣지)을 강조, runner 요청은 없음
