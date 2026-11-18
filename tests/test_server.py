@@ -1,6 +1,8 @@
 """B 검사 — 담당 B(윤효연), WBS 3.2.6 · 3.4.3. 실행: python -m tests.test_server"""
 from hfl.assign import check_assignment, edge_composition, make_assignment
 from hfl.common import DEFAULT_CONFIG, read_json
+from hfl.model import N_PARAMS
+from servers import central, edge
 
 
 def _default_cfg():
@@ -54,8 +56,40 @@ def test_edge_composition():
 
 
 def test_reject_409():
-    """Flask test_client: 지난 버전 제출, 배정 안 된 클라 제출 → 409"""
-    raise NotImplementedError  # TODO 3.4.3
+    """Flask test_client: 지난 버전 제출, 배정 안 된 클라 제출 → 409
+    거부된 요청은 서버 상태를 바꾸지 않아야 함. (전원 제출 전까지만 보내서 집계·로그 기록은 안 일어남)
+    """
+    w = [0.0] * N_PARAMS
+
+    # 중앙
+    s = central.app.test_client()
+    up = {"edge_id": "E1", "version": 1, "weights": w, "n_samples": 3600}
+    _expect_409(s.post("/edge_update", json=up), "not started")
+    assert s.post("/start", json={"exp_id": "exp_test409", "edges": ["E1", "E2"]}).status_code == 200
+    _expect_409(s.post("/edge_update", json={**up, "version": 0}), "version mismatch")  # 지난 버전
+    _expect_409(s.post("/edge_update", json={**up, "edge_id": "E9"}), "unknown edge")
+    st = s.get("/status").get_json()
+    assert st["version"] == 1 and st["submitted"] == [], st
+    r = s.post("/edge_update", json=up)  # 정상 제출은 받음 (2개 중 1개라 아직 집계 안 함)
+    assert r.status_code == 200 and r.get_json() == {"ok": True, "received": 1, "aggregated": False, "version": 1}
+
+    # 엣지
+    edge.app.config["EDGE_ID"] = "E1"
+    e = edge.app.test_client()
+    cu = {"client_id": "C1", "version": 1, "weights": w, "n_samples": 1200, "train_loss": 0.5}
+    _expect_409(e.post("/client_update", json=cu), "not started")
+    assert e.post("/start", json={"exp_id": "exp_test409", "clients": ["C1", "C2", "C4"]}).status_code == 200
+    _expect_409(e.post("/client_update", json={**cu, "client_id": "C3"}), "client not assigned to this edge")
+    _expect_409(e.post("/client_update", json={**cu, "version": 0}), "version mismatch")  # 지난 버전
+    st = e.get("/status").get_json()
+    assert st["version"] == 1 and st["received"] == [], st
+    r = e.post("/client_update", json=cu)
+    assert r.status_code == 200 and r.get_json() == {"ok": True, "received": 1, "expected": 3, "edge_submitted": False}
+
+
+def _expect_409(resp, error):
+    assert resp.status_code == 409, (resp.status_code, resp.get_json())
+    assert resp.get_json() == {"ok": False, "error": error}, resp.get_json()
 
 
 if __name__ == "__main__":
