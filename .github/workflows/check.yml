@@ -1,0 +1,59 @@
+# push·PR 마다 처음부터 실행해서 깨진 곳이 없는지 자동 확인 (README 실행 순서 그대로)
+name: 검사
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true  # 연달아 push 하면 앞 검사는 취소
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: MNIST 캐시
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: mnist-v1
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 단위 검사 (A 학습 · B 서버 · C 화면)
+        run: |
+          python -m tests.test_learning
+          python -m tests.test_server
+          python -m tests.test_dashboard
+
+      - name: 실험 3개 실행 (서버 3개 + runner)
+        run: python -m scripts.run_all
+
+      - name: 보고서 표·그래프 생성
+        run: python -m scripts.make_report
+
+      - name: 명세 필수 6항목 점검
+        run: python -m tests.test_requirements
+
+      - name: 로그·보고서 보관 (Actions 화면에서 내려받기)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-and-report
+          path: |
+            logs/
+            docs/report.md
+            docs/img/
+          retention-days: 14
