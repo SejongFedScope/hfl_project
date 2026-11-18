@@ -48,8 +48,10 @@ pip install -r requirements.txt
 ```bash
 python -m tests.test_learning      # 집계 손계산 · 분할 중복
 python -m tests.test_server        # 배정 위반 · 409
-python -m tests.test_dashboard     # 로그 API: 깨진 폴더 · 잘린 줄 · 경로 차단
+python -m tests.test_dashboard     # 로그 API 엣지 케이스 · 보고서 생성
 python -m scripts.run_all          # 서버 3개 + 실험 3개 (pref, random, pref+결함 주입) → logs/
+python -m scripts.make_report      # logs/ → docs/report.md 표 + docs/img/ 그래프
+python -m tests.test_requirements  # 명세 필수 6항목 O/X (run_all 다음에)
 python -m dashboard.app            # http://127.0.0.1:5050
 python -m dashboard.app --sample   # 실제 로그 대신 dashboard/sample_logs/ 시험 로그로 화면 보기
 ```
@@ -93,7 +95,7 @@ hfl_project/
 │  ├─ templates/index.html          상단 KPI + 4영역 격자
 │  ├─ static/                       state.js(선택 상태) kpi.js structure.js comm.js data.js global.js style.css vendor/echarts.min.js
 │  └─ sample_logs/                  손으로 만든 시험 로그
-├─ tests/test_learning.py (A), test_server.py (B), test_dashboard.py (C)
+├─ tests/test_learning.py (A), test_server.py (B), test_dashboard.py (C), test_requirements.py (공동, 필수 6항목)
 └─ docs/
    ├─ api.md                    B   ★약속
    ├─ log_format.md             B   ★약속

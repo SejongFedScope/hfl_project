@@ -44,6 +44,40 @@ def test_edge_cases():
         shutil.rmtree(root)
 
 
+def test_make_report():
+    """시험 로그로 보고서 생성: 표시 사이만 바뀌고 사람이 쓴 글은 그대로, 시험 요청은 성공률에서 빠짐"""
+    from scripts import make_report
+    root = Path(tempfile.mkdtemp())
+    try:
+        shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", root / "logs" / "exp_pref_seed42")
+        shutil.copytree(SAMPLE_ROOT / "exp_random_seed42_inject", root / "logs" / "exp_random_seed42_inject")
+        shutil.copytree(SAMPLE_ROOT / "exp_random_seed42_inject", root / "logs" / "exp_random_seed42")  # 결함 주입 없는 무작위 실험으로 씀
+        cfg_path = root / "logs" / "exp_random_seed42" / "config.json"
+        cfg_path.write_text(cfg_path.read_text(encoding="utf-8").replace('"inject": true', '"inject": false'), encoding="utf-8")
+        report = root / "docs" / "report.md"
+        report.parent.mkdir()
+        report.write_text("손으로 쓴 머리말\n<!-- auto:conditions -->\n옛 표\n<!-- /auto:conditions -->\n손으로 쓴 해석\n"
+                          + "".join(f"<!-- auto:{k} -->\n<!-- /auto:{k} -->\n" for k in ("preference", "edges", "performance", "comm")), encoding="utf-8")
+
+        make_report.main(["--logs", str(root / "logs"), "--out", str(report)])
+        text = report.read_text(encoding="utf-8")
+        assert "손으로 쓴 머리말" in text and "손으로 쓴 해석" in text and "옛 표" not in text
+        assert "| 시드 | 42 |" in text and "두 실험 학습 조건 동일 | 예" in text
+        assert "엣지 간 숫자 분포 차이 (0 = 같음, 1 = 완전히 다름): 선호 **0.67**, 무작위 **0.00**" in text
+        assert "| 선호 + 결함 주입 |" in text and "2 (409 2)" in text  # 시험 요청은 따로 셈
+        assert (root / "docs" / "img" / "report_acc.svg").exists() and (root / "docs" / "img" / "report_edge_digits.svg").exists()
+
+        report.write_text("표시 없음", encoding="utf-8")  # 표시가 없으면 덮어쓰지 않고 멈춤
+        try:
+            make_report.main(["--logs", str(root / "logs"), "--out", str(report)])
+            raise AssertionError("표시가 없는데 멈추지 않음")
+        except SystemExit:
+            assert report.read_text(encoding="utf-8") == "표시 없음"
+    finally:
+        shutil.rmtree(root)
+
+
 if __name__ == "__main__":
-    test_edge_cases()
-    print("PASS test_edge_cases")
+    for t in (test_edge_cases, test_make_report):
+        t()
+        print("PASS", t.__name__)
