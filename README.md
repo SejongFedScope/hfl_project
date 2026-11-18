@@ -6,6 +6,10 @@
 
 중앙 서버 1 · 엣지 서버 2 · 가상 클라이언트 6, MNIST 숫자별 분할(non-IID), FedAvg 2단계 집계, 선호(matching)·무작위 배정 비교, 학습·배정·통신 로그, 4영역 모니터링 화면.
 
+[![모니터링 화면](docs/img/dashboard.png)](docs/dashboard.md)
+
+화면 읽는 법·시연 순서: [docs/dashboard.md](docs/dashboard.md) · 배정 비교 보고서: [docs/report.md](docs/report.md)
+
 > 파일 맨 위 설명과 함수 docstring에 담당·할 일(WBS 번호)·입출력이 있음. WBS 번호·일정은 팀 Notion.
 
 ## 담당
@@ -14,7 +18,7 @@
 |---|---|---|
 | A 학습·집계 | 이건 | `hfl/data_split.py` `hfl/model.py` `hfl/aggregate.py` `tests/test_learning.py` `docs/aggregation_check.md` `docs/third_party.md` |
 | B 서버·배정 | 윤효연 | `configs/` `hfl/common.py` `hfl/assign.py` `hfl/comm.py` `servers/` `runner/` `scripts/run_all.py` `tests/test_server.py` `docs/api.md` `docs/log_format.md` `README.md` `requirements.txt` |
-| C 모니터링 화면 | 김영헌 | `dashboard/` `scripts/make_report.py` `tests/test_dashboard.py` `tests/test_ui.py` `docs/usability_test.md` |
+| C 모니터링 화면 | 김영헌 | `dashboard/` `scripts/make_report.py` `tests/test_dashboard.py` `tests/test_ui.py` `docs/dashboard.md` `docs/usability_test.md` |
 | 실험·검증 | 전원 | `docs/report.md`, 교차 검증 |
 
 ## 규칙
@@ -104,6 +108,7 @@ hfl_project/
    ├─ log_format.md             B   ★약속
    ├─ aggregation_check.md      A   손계산 예제
    ├─ third_party.md            A   공개 코드(FedProx) 사용 기록·수정 사항·원본 실행 기록
+   ├─ dashboard.md              C   화면 사용 설명서·시연 순서 (그림: docs/img/)
    ├─ usability_test.md         C
    └─ report.md                 공동
 ```
