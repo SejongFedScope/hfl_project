@@ -43,7 +43,7 @@ python -m dashboard.app --sample   # 실제 로그 대신 dashboard/sample_logs/
 서버를 따로 띄울 때 (터미널 4개):
 
 ```powershell
-python -m servers.central --port 5000
+python -m servers.central --port 5003
 python -m servers.edge --id E1 --port 5001
 python -m servers.edge --id E2 --port 5002
 python -m runner.client_runner --method pref        # random, 또는 --inject
