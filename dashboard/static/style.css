@@ -180,3 +180,4 @@ body {
 .spark { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .spark svg { display: block; }
 .spark b { font-weight: 600; min-width: 36px; }
+.sub_table caption { white-space: normal; color: var(--text-secondary); font-weight: 600; line-height: 1.4; }

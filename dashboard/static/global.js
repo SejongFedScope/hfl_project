@@ -20,6 +20,10 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
   const cur = s.round - 1;
   const now = g[cur];
   const worst = now ? now.acc_by_digit.indexOf(Math.min(...now.acc_by_digit)) : -1;
+  const owners = worst < 0 ? [] : nsort(Object.keys(b.split.clients).filter(c => b.split.clients[c].digit_counts[worst] > 0));
+  const ce = client_edge(b);
+  const worst_note = worst < 0 ? "숫자별 정확도 %" :
+    `숫자별 정확도 % · R${s.round} 최저 = 숫자 ${worst} (${(now.acc_by_digit[worst] * 100).toFixed(1)}%), 보유: ${owners.map(c => `${c}(${ce[c] || "미배정"})`).join(" ")}`;
   const show_num = (chart.getWidth() - 40) / rounds.length >= 26 && (chart.getHeight() * 0.5) / 10 >= 13;
   const all_acc = g.filter(Boolean).flatMap(x => x.acc_by_digit);
   const acc_floor = all_acc.length ? Math.floor(Math.min(...all_acc) * 10) / 10 : 0;
@@ -59,7 +63,7 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
     title: [
       {text: `공동 모델 정확도  ${now ? (now.acc * 100).toFixed(1) + "%" : "–"}`, left: 0, top: 0, textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},  // 값 = 선택 라운드
       {text: `손실  ${now ? now.loss.toFixed(3) : "–"}`, left: "56%", top: 0, textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},
-      {text: "숫자별 정확도 % (빨간 테두리 = 선택 라운드 최저)", left: 0, top: "36%", textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},
+      {text: worst_note, left: 0, top: "36%", textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},
     ],
     grid: [
       {left: 40, right: "48%", top: 22, height: "22%"},  // 정확도·손실은 단위가 달라서 축을 나눠 나란히
@@ -175,6 +179,11 @@ function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
+  const cap = document.createElement("caption");
+  cap.textContent = max_diff === null ? "" : max_diff < 0.05
+    ? "해석: 모든 클라가 같은 공동 모델에서 시작해 다 참여하고, 엣지 집계 1번마다 중앙 집계 → 2단계 가중 평균 = 클라 전체 가중 평균이라 배정과 무관하게 공동 모델이 같음. 배정은 엣지 구성(분포 차이)만 바꿈"
+    : "해석: 공동 정확도가 다름 → 엣지 안에서 여러 번 집계했거나 일부 클라가 빠진 라운드가 있는지 확인 (같은 조건이면 원래 같아야 함)";
+  table.prepend(cap);
   host.querySelector(".sub_table").replaceChildren(table);
   chart.resize();  // 표가 들어간 뒤 줄어든 그래프 칸에 맞춤
 }

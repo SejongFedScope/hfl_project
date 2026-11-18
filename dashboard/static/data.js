@@ -33,11 +33,16 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
   });
 
   const text = base_text();
+  const missing = nsort(Object.keys(comp)).map(e => [e, comp[e].digit_counts.map((n, d) => (n ? null : d)).filter(d => d !== null)]);
+  const gaps = missing.filter(([, ds]) => ds.length);
+  const note = gaps.length ? "해석: " + gaps.map(([e, ds]) => `${e}에 숫자 ${ds.join("·")} 없음`).join(", ") + " → 엣지 모델이 그 숫자를 못 배움"
+    : "해석: 모든 엣지가 숫자 0~9 를 다 가짐 → 엣지끼리 데이터 구성이 비슷";
   draw(chart, {
     animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
-    grid: {left: 112, right: 8, top: 20, bottom: 8},
+    title: {text: note, left: 0, bottom: 0, textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},
+    grid: {left: 112, right: 8, top: 20, bottom: 24},
     visualMap: {show: false, min: 1, max, inRange: {color: SEQ_BLUE}},
     xAxis: {
       type: "category", data: [...Array(10).keys()].map(String), position: "top",

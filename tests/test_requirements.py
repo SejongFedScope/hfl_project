@@ -44,7 +44,7 @@ def check_split(exps, train_y):
 
 
 def check_topology(exps):
-    """2. 중앙 1 · 엣지 2 · 클라 6"""
+    """2. 중앙 1 · 엣지 2 · 클라 6 (명세 기본 구성 그대로인지 봄. 구성을 바꾼 설정이면 여기만 X 가 정상)"""
     for e in exps:
         a = e["assignment"]["assignment"]
         clients = [c for cs in a.values() for c in cs]
@@ -59,13 +59,14 @@ def check_rest_fedavg(exps):
     for e in exps:
         R = e["config"]["rounds"]
         a = e["assignment"]["assignment"]
+        n_clients = len(e["config"]["client_digits"])  # 설정이 바뀌어도 맞게 (클라 수를 숫자로 박지 않음)
         for r in range(1, R + 1):
             tr = [x for x in e["train"] if x["round"] == r]
             cm = [x for x in e["comm"] if x["round"] == r and x["kind"] != "injected"]
             clients = {x["target"]: x for x in tr if kind_of(x["target"]) == "client"}
             edges = {x["target"]: x for x in tr if kind_of(x["target"]) == "edge"}
             glob = next(x for x in tr if x["target"] == "global")
-            assert len(clients) == 6 and set(edges) == set(a), f"{e['id']} R{r}: 클라 {len(clients)} 엣지 {sorted(edges)}"
+            assert len(clients) == n_clients and set(edges) == set(a), f"{e['id']} R{r}: 클라 {len(clients)} 엣지 {sorted(edges)}"
             assert all(x["model_version"] == r for x in clients.values()), f"{e['id']} R{r}: 클라 학습 시작 버전 ≠ {r}"
             assert glob["model_version"] == r + 1, f"{e['id']} R{r}: 집계 결과 버전 {glob['model_version']}"
             for ed, rec in edges.items():  # 1차 집계 가중치 = 담당 클라 표본 수

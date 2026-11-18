@@ -194,7 +194,7 @@ async function load_compare(exp) {  // ④ 배정 방식 비교용 두 번째 �
 }
 
 async function init() {
-  await document.fonts.ready;  // 글꼴 받은 뒤에 그려야 글자가 나중에 바뀌지 않음
+  await Promise.race([document.fonts.ready, new Promise(ok => setTimeout(ok, 800))]);  // 글꼴을 기다리되 최대 0.8초 (인터넷이 막혀도 화면은 뜸)
   let exps;
   try {
     exps = await fetch_json("/api/experiments");
