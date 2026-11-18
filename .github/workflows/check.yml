@@ -37,6 +37,12 @@ jobs:
           python -m tests.test_server
           python -m tests.test_dashboard
 
+      - name: 화면 동작 검사 (브라우저, 창 없음)
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          python -m tests.test_ui
+
       - name: 실험 3개 실행 (서버 3개 + runner)
         run: python -m scripts.run_all
 

@@ -14,7 +14,7 @@
 |---|---|---|
 | A 학습·집계 | 이건 | `hfl/data_split.py` `hfl/model.py` `hfl/aggregate.py` `tests/test_learning.py` `docs/aggregation_check.md` `docs/third_party.md` |
 | B 서버·배정 | 윤효연 | `configs/` `hfl/common.py` `hfl/assign.py` `hfl/comm.py` `servers/` `runner/` `scripts/run_all.py` `tests/test_server.py` `docs/api.md` `docs/log_format.md` `README.md` `requirements.txt` |
-| C 모니터링 화면 | 김영헌 | `dashboard/` `scripts/make_report.py` `tests/test_dashboard.py` `docs/usability_test.md` |
+| C 모니터링 화면 | 김영헌 | `dashboard/` `scripts/make_report.py` `tests/test_dashboard.py` `tests/test_ui.py` `docs/usability_test.md` |
 | 실험·검증 | 전원 | `docs/report.md`, 교차 검증 |
 
 ## 규칙
@@ -51,6 +51,7 @@ pip install -r requirements.txt
 python -m tests.test_learning      # 집계 손계산 · 분할 중복
 python -m tests.test_server        # 배정 위반 · 409
 python -m tests.test_dashboard     # 로그 API 엣지 케이스 · 보고서 생성
+python -m tests.test_ui            # 화면 클릭·키보드 동작 (playwright 있을 때만, 없으면 SKIP)
 python -m scripts.run_all          # 서버 3개 + 실험 3개 (pref, random, pref+결함 주입) → logs/
 python -m scripts.make_report      # logs/ → docs/report.md 표 + docs/img/ 그래프
 python -m tests.test_requirements  # 명세 필수 6항목 O/X (run_all 다음에)
@@ -97,7 +98,7 @@ hfl_project/
 │  ├─ templates/index.html          상단 KPI + 4영역 격자
 │  ├─ static/                       state.js(선택 상태) kpi.js structure.js comm.js data.js global.js style.css vendor/echarts.min.js
 │  └─ sample_logs/                  손으로 만든 시험 로그
-├─ tests/test_learning.py (A), test_server.py (B), test_dashboard.py (C), test_requirements.py (공동, 필수 6항목)
+├─ tests/test_learning.py (A), test_server.py (B), test_dashboard.py · test_ui.py (C), test_requirements.py (공동, 필수 6항목)
 └─ docs/
    ├─ api.md                    B   ★약속
    ├─ log_format.md             B   ★약속
