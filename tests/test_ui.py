@@ -134,8 +134,39 @@ def check_layout(browser, url, errors):
 def check_empty_run(browser, url, errors):
     """시작 직후 죽은 실험(기록 0개)도 오류 없이 안내 문구"""
     pg = _open(browser, url, errors)
-    expect(pg.locator("#status")).to_contain_text("끝난 라운드가 없음")
+    expect(pg.locator("#status")).to_contain_text("끝난 라운드")  # '없음' 또는 '0/3 · 자동 갱신'
     expect(pg.locator("#kpi")).to_contain_text("0 라운드")
+    pg.close()
+
+
+def _append_round(exp_dir, full, r):
+    """시험 로그에서 라운드 r 줄만 실행 중인 실험 폴더에 이어 씀 (runner 가 쓰는 것처럼)"""
+    for name in ("train.jsonl", "comm.jsonl"):
+        rows = [x for x in full[name] if x["round"] == r]
+        with open(exp_dir / name, "a", encoding="utf-8") as f:
+            f.writelines(json.dumps(x, ensure_ascii=False) + "\n" for x in rows)
+
+
+def check_live(browser, url, errors, root):
+    """실행 중 화면 갱신: 새 라운드를 따라감, 예전 라운드를 보고 있으면 그대로 둠, 새 실험은 목록에 추가"""
+    full = {n: _log("exp_pref_seed42", n) for n in ("train.jsonl", "comm.jsonl")}
+    run = root / "exp_pref_seed42"
+    pg = _open(browser, url, errors)
+    assert pg.evaluate("() => [state.round, done_rounds(state.bundle)]") == [1, 1]
+    expect(pg.locator("#status")).to_contain_text("자동 갱신")
+
+    _append_round(run, full, 2)
+    pg.wait_for_function("() => state.round === 2", timeout=8000)  # 마지막 라운드를 보던 중 → 따라감
+
+    pg.evaluate("() => set_pin({type: 'client', id: 'C3'})")
+    pg.evaluate("() => set_round(1)")  # 예전 라운드로 돌아가 있으면
+    _append_round(run, full, 3)
+    pg.wait_for_function("() => done_rounds(state.bundle) === 3", timeout=8000)
+    assert pg.evaluate("() => [state.round, state.pinned && state.pinned.id, document.getElementById('round').max]") == [1, "C3", "3"]
+    expect(pg.locator("#status")).to_contain_text("실행 끝")
+
+    shutil.copytree(SAMPLE_ROOT / "exp_random_seed42_inject", root / "exp_random_seed42_inject")  # 다음 실험이 생기면
+    expect(pg.locator("#exp option")).to_have_count(2, timeout=8000)
     pg.close()
 
 
@@ -147,23 +178,33 @@ def test_ui():
     shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", empty_root / "exp_empty")
     (empty_root / "exp_empty" / "train.jsonl").unlink()
     (empty_root / "exp_empty" / "comm.jsonl").unlink()
+    live_root = Path(tempfile.mkdtemp())  # 라운드 1까지만 쓴 '실행 중' 실험
+    run = live_root / "exp_pref_seed42"
+    shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", run)
+    for name in ("train.jsonl", "comm.jsonl"):
+        rows = [x for x in _log("exp_pref_seed42", name) if x["round"] <= 1]
+        (run / name).write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in rows), encoding="utf-8")
     try:
         with sync_playwright() as p:
             browser = _launch(p)
-            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout]), (empty_root, [check_empty_run])]
+            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout]),
+                    (empty_root, [check_empty_run]),
+                    (live_root, [lambda b, u, e: check_live(b, u, e, live_root)])]
             for root, checks in plan:
                 srv, url = _serve(root)
                 try:
                     for check in checks:  # 검사마다 새 페이지 → 서로 상태 공유 없음
                         errors = []
                         check(browser, url, errors)
-                        assert not errors, (check.__name__, errors)
-                        print("PASS", check.__name__)
+                        name = "check_live" if check.__name__ == "<lambda>" else check.__name__
+                        assert not errors, (name, errors)
+                        print("PASS", name)
                 finally:
                     srv.shutdown()
             browser.close()
     finally:
         shutil.rmtree(empty_root)
+        shutil.rmtree(live_root)
 
 
 if __name__ == "__main__":

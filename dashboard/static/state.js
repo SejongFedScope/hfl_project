@@ -177,8 +177,61 @@ async function load_bundle(exp) {  // 4.2 로그 API → state.bundle
   const done = done_rounds(state.bundle);
   document.getElementById("round").max = Math.max(1, done);
   render_legend(state.bundle);
-  set_status(done ? "" : `${exp}: 아직 끝난 라운드가 없음 (학습·통신 기록 없음). 배정·데이터 분포만 표시`, done === 0);
+  set_status(done ? "" : `${exp}: 아직 끝난 라운드가 없음 (학습·통신 기록 없음). 배정·데이터 분포만 표시`, done === 0 && !live_on());
   set_round(state.round);
+  update_live_status();
+}
+
+// 실행 중 화면 갱신 (명세 심화): 아직 덜 끝난 실험이면 2초마다 로그를 다시 받아 바뀐 것만 반영
+const LIVE_MS = 2000;
+let polling = false;
+
+function live_on() { return document.getElementById("live").checked; }
+
+function unfinished(b) { return b && done_rounds(b) < b.config.rounds; }
+
+function update_live_status() {
+  const b = state.bundle;
+  if (!b || !live_on() || !unfinished(b)) return;
+  set_status(`실행 중으로 보임 · 끝난 라운드 ${done_rounds(b)}/${b.config.rounds} · ${LIVE_MS / 1000}초마다 자동 갱신`);
+}
+
+function add_new_experiments(exps) {  // 실행 중에 새로 생긴 실험을 선택 상자에 추가
+  for (const id of ["exp", "compare_exp"]) {
+    const sel = document.getElementById(id);
+    const have = new Set([...sel.options].map(o => o.value));
+    exps.filter(e => !have.has(e)).forEach(e => sel.add(new Option(e, e)));
+  }
+}
+
+async function poll() {
+  if (polling || !live_on()) return;
+  polling = true;
+  try {
+    add_new_experiments(await fetch_json("/api/experiments"));
+    const b = state.bundle;
+    if (unfinished(b)) {
+      const nb = await fetch_json(`/api/${encodeURIComponent(state.exp)}/bundle`);
+      if (nb.train.length !== b.train.length || nb.comm.length !== b.comm.length) {
+        const follow = state.round >= done_rounds(b);  // 마지막 라운드를 보고 있었으면 새 라운드를 따라감
+        state.bundle = nb;
+        const done = done_rounds(nb);
+        document.getElementById("round").max = Math.max(1, done);
+        if (follow) state.round = Math.max(1, done);
+        set_round(state.round);  // 라벨·슬라이더 맞추고 다시 그림 (고정한 대상은 그대로)
+        set_status(unfinished(nb) ? "" : `${state.exp}: 실행 끝 (${done}라운드)`);
+      }
+      update_live_status();
+    }
+    if (unfinished(state.compare_bundle)) {
+      state.compare_bundle = await fetch_json(`/api/${encodeURIComponent(state.compare_exp)}/bundle`);
+      notify();
+    }
+  } catch (err) {
+    set_status(`자동 갱신 실패: ${err.message} (서버가 꺼졌으면 다시 켜세요)`, true);
+  } finally {
+    polling = false;
+  }
 }
 
 async function load_compare(exp) {  // ④ 배정 방식 비교용 두 번째 실험
@@ -203,7 +256,10 @@ async function init() {
     return;
   }
   if (!exps.length) {
-    document.getElementById("kpi").innerHTML = '<p class="empty">로그가 없습니다. 실험을 먼저 돌리거나 <code>python -m dashboard.app --sample</code> 로 시험 로그를 보세요.</p>';
+    document.getElementById("kpi").innerHTML = '<p class="empty">로그가 없습니다. 실험을 먼저 돌리거나 <code>python -m dashboard.app --sample</code> 로 시험 로그를 보세요. 실험이 시작되면 자동으로 열립니다.</p>';
+    setInterval(async () => {  // 실험이 처음 생기면 화면을 새로 엶
+      try { if ((await fetch_json("/api/experiments")).length) location.reload(); } catch (err) { /* 서버가 아직 안 떴음 */ }
+    }, LIVE_MS);
     return;
   }
   const sel = document.getElementById("exp");
@@ -224,8 +280,10 @@ async function init() {
     if (ev.key === "ArrowLeft") set_round(state.round - 1);
     if (ev.key === "ArrowRight") set_round(state.round + 1);
   });
+  document.getElementById("live").onchange = () => { set_status(""); update_live_status(); };
   await load_compare(cmp.value);
   await load_bundle(sel.value);
+  setInterval(poll, LIVE_MS);
 }
 
 window.addEventListener("DOMContentLoaded", init);  // 모든 패널 스크립트가 subscribe 한 뒤 시작
