@@ -94,6 +94,9 @@ def test_model_basic():
     x, y = _toy_data()
     w0 = init_weights()
     assert w0.shape == (N_PARAMS,) and not w0.any()
+    assert not init_weights(cfg).any()  # 설정 기본값 init_model "zeros"
+    wn = init_weights({"init_model": "normal", "seed": 7})
+    assert wn.shape == (N_PARAMS,) and wn.any() and np.array_equal(wn, init_weights({"init_model": "normal", "seed": 7}))  # 같은 시드 → 같은 초기 모델
     before = w0.copy()
     w1, tl1 = train_local(w0, x, y, cfg, seed=1)
     assert np.array_equal(w0, before) and w1 is not w0          # 입력 w 를 건드리지 않음

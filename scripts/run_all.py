@@ -3,8 +3,10 @@
 서버 3개(중앙, 엣지 E1·E2)를 띄우고 runner 로 실험 3개 실행 → logs/
   pref / random / pref + 결함 주입
 끝나면 서버 종료. 실행: python -m scripts.run_all
+      python -m scripts.run_all --methods pref,random [--inject] → 고른 배정 방식만 (화면 '실험 실행' 탭이 씀)
 서버 출력(요청 로그·오류)은 logs/servers.log
 """
+import argparse
 import socket
 import subprocess
 import sys
@@ -39,7 +41,7 @@ def _wait(proc, url):
     raise RuntimeError(f"서버가 응답하지 않음: {url}")
 
 
-def main():
+def main(experiments=EXPERIMENTS):
     cfg = load_config()
     servers = [(["servers.central"], cfg["central_url"])]
     servers += [(["servers.edge", "--id", e], url) for e, url in cfg["edge_urls"].items()]
@@ -59,7 +61,7 @@ def main():
                 _wait(proc, url)
             print("서버 3개 준비 완료:", ", ".join(url for _, url in servers))
 
-            done = [run(method, inject) for method, inject in EXPERIMENTS]
+            done = [run(method, inject) for method, inject in experiments]
             print(f"완료 ({log_root}):", ", ".join(done))
         finally:
             for p in procs:  # 실험이 중간에 실패해도 서버는 꼭 끔
@@ -69,4 +71,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--methods", help="쉼표로 구분한 배정 방식 (pref,random). 생략하면 기본 실험 3개")
+    ap.add_argument("--inject", action="store_true", help="--methods 와 함께: 결함 주입을 켜고 실행")
+    a = ap.parse_args()
+    if not a.methods:
+        main()
+    else:
+        methods = a.methods.split(",")
+        if not methods or any(m not in ("pref", "random") for m in methods):
+            ap.error("--methods 는 pref, random 중에서 (예: pref,random)")
+        main([(m, a.inject) for m in methods])

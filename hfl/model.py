@@ -40,9 +40,16 @@ def _loss(p, y):
     return float(-np.log(np.clip(p[np.arange(len(y)), y], 1e-12, None)).mean())
 
 
-def init_weights():
-    """→ 길이 7,850 배열, 전부 0 (모든 실험이 같은 초기 모델에서 시작)."""
-    return np.zeros(N_PARAMS, dtype=np.float64)
+def init_weights(cfg=None):
+    """→ 길이 7,850 배열. 모든 클라가 같은 초기 모델에서 시작 (명세 "초기 모델을 설정 파일로 관리").
+    cfg["init_model"]: "zeros"(기본, 전부 0) / "normal"(cfg["seed"] 로 정규분포 N(0, 0.01²), 같은 시드 → 같은 모델)
+    """
+    kind = (cfg or {}).get("init_model", "zeros")
+    if kind == "zeros":
+        return np.zeros(N_PARAMS, dtype=np.float64)
+    if kind == "normal":
+        return np.random.default_rng(cfg["seed"]).normal(0.0, 0.01, N_PARAMS)
+    raise ValueError(f"모르는 init_model: {kind!r} (zeros / normal)")
 
 
 def train_local(w, x, y, cfg, seed):

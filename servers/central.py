@@ -44,11 +44,11 @@ def _reject(msg):
 
 @app.post("/start")
 def start():
-    """{"exp_id", "edges"} → 모델 0 으로 초기화, 버전 1"""
+    """{"exp_id", "edges"} → 초기 모델(설정 init_model, 기본 0)로 시작, 버전 1"""
     body = request.get_json()
     with lock:
         state.update(exp=body["exp_id"], edges=list(body["edges"]), version=1,
-                     weights=init_weights(), submitted={}, last_eval=None)
+                     weights=init_weights(cfg), submitted={}, last_eval=None)
     return jsonify(ok=True, version=1)
 
 

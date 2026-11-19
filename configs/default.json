@@ -1,6 +1,7 @@
 {
   "seed": 42,
   "rounds": 20,
+  "init_model": "zeros",
   "local_epochs": 1,
   "lr": 0.1,
   "batch_size": 32,
