@@ -187,7 +187,7 @@ async function load_bundle(exp) {  // 4.2 로그 API → state.bundle
   document.getElementById("round").max = Math.max(1, done);
   render_legend(state.bundle);
   set_status(done ? "" : `${exp}: 아직 끝난 라운드가 없음 (학습·통신 기록 없음). 배정·데이터 분포만 표시`, done === 0 && !live_on());
-  set_round(state.round);
+  set_round(unfinished(state.bundle) ? done : state.round);  // 실행 중인 실험은 마지막 라운드부터 → 새 라운드를 따라감
   update_live_status();
 }
 
@@ -205,12 +205,17 @@ function update_live_status() {
   set_status(`실행 중으로 보임 · 끝난 라운드 ${done_rounds(b)}/${b.config.rounds} · ${LIVE_MS / 1000}초마다 자동 갱신`);
 }
 
+function exp_method(e) { return String(e).split("_")[1]; }  // exp_<배정방식>_seed..
+
 function add_new_experiments(exps) {  // 실행 중에 새로 생긴 실험을 선택 상자에 추가
   for (const id of ["exp", "compare_exp"]) {
     const sel = document.getElementById(id);
     const have = new Set([...sel.options].map(o => o.value));
     exps.filter(e => !have.has(e)).forEach(e => sel.add(new Option(e, e)));
   }
+  const cmp = document.getElementById("compare_exp");
+  const other = exps.find(e => exp_method(e) !== exp_method(state.exp));
+  if (state.compare_exp === state.exp && other) { cmp.value = other; load_compare(other); }  // 처음엔 실험이 하나뿐이라 자기와 비교 중 → 배정 방식이 다른 실험이 생기면 바꿈
 }
 
 async function poll() {
@@ -277,8 +282,7 @@ async function init() {
     sel.add(new Option(e, e));
     cmp.add(new Option(e, e));
   }
-  const method = e => e.split("_")[1];  // exp_<배정방식>_seed..
-  cmp.value = exps.find(e => method(e) !== method(exps[0])) ?? exps.find(e => e !== exps[0]) ?? exps[0];  // 처음엔 배정 방식이 다른 실험과 비교
+  cmp.value = exps.find(e => exp_method(e) !== exp_method(exps[0])) ?? exps.find(e => e !== exps[0]) ?? exps[0];  // 처음엔 배정 방식이 다른 실험과 비교
   sel.onchange = () => load_bundle(sel.value);
   cmp.onchange = () => load_compare(cmp.value);
   document.getElementById("round").oninput = ev => set_round(Number(ev.target.value));

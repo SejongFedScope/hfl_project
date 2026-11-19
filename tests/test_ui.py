@@ -172,7 +172,7 @@ def _append_round(exp_dir, full, r):
 
 
 def check_live(browser, url, errors, root):
-    """실행 중 화면 갱신: 새 라운드를 따라감, 예전 라운드를 보고 있으면 그대로 둠, 새 실험은 목록에 추가"""
+    """실행 중 화면 갱신: 새 라운드를 따라감, 중간에 열어도 마지막 라운드부터, 예전 라운드를 보고 있으면 그대로 둠, 새 실험은 목록·비교에 추가"""
     full = {n: _log("exp_pref_seed42", n) for n in ("train.jsonl", "comm.jsonl")}
     run = root / "exp_pref_seed42"
     pg = _open(browser, url, errors)
@@ -181,6 +181,9 @@ def check_live(browser, url, errors, root):
 
     _append_round(run, full, 2)
     pg.wait_for_function("() => state.round === 2", timeout=8000)  # 마지막 라운드를 보던 중 → 따라감
+    late = _open(browser, url, errors)  # 실행 중간에 연 화면도 라운드 1이 아니라 마지막 라운드부터
+    assert late.evaluate("() => state.round") == 2
+    late.close()
 
     pg.evaluate("() => set_pin({type: 'client', id: 'C3'})")
     pg.evaluate("() => set_round(1)")  # 예전 라운드로 돌아가 있으면
@@ -191,6 +194,7 @@ def check_live(browser, url, errors, root):
 
     shutil.copytree(SAMPLE_ROOT / "exp_random_seed42_inject", root / "exp_random_seed42_inject")  # 다음 실험이 생기면
     expect(pg.locator("#exp option")).to_have_count(2, timeout=8000)
+    pg.wait_for_function("() => state.compare_exp === 'exp_random_seed42_inject'", timeout=8000)  # 자기와 비교하던 걸 다른 배정 실험으로
     pg.close()
 
 
