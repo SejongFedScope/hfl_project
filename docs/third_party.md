@@ -42,11 +42,78 @@
 
 ### 원본 실행 기록
 
-명세 "공개 FedAvg 코드로 MNIST 학습을 실행" → **아직 실행하지 않음 (11/19 기준)**. 심화 기간(11/20~)에 진행 예정 (MNIST · mclr · fedavg).
+명세 "공개 FedAvg 코드로 MNIST 학습을 실행" → **11/19 실행 완료 (이건)**. 원본 저장소를 우리 레포 밖 별도 폴더에 받아 실행.
 
-**환경 변경 (원본과 다른 점):** 원본 `requirements.txt`는 `tensorflow-gpu==1.10`(Python 3.6까지 설치 가능)이지만, **원본 1.10 대신 Python 3.7 + TensorFlow 1.15(CPU)로 실행**한다. 이유: 1.10은 현재 환경에서 설치가 어렵고, 1.15는 같은 TF 1.x API(`tf.layers`, `tf.Session`)를 쓰므로 코드 수정 없이 돌아갈 것으로 보임. 실행 후 실제로 코드 수정이 필요했는지도 아래에 적는다.
+**환경**
+- Windows 10 · CPU (GPU 없음, CUDA 관련 경고는 GPU 미사용 안내)
+- **원본 1.10 대신 1.15로 실행**: 원본 `requirements.txt`는 `tensorflow-gpu==1.10`(Python 3.6까지 설치 가능) → Python 3.7.9 + `tensorflow==1.15.0`(CPU)
+- 주요 패키지: `tensorflow==1.15.0` `numpy==1.18.5` `protobuf==3.20.3` `scipy==1.7.3` `tqdm` `Pillow` `matplotlib` (numpy·protobuf는 TF 1.15와 맞는 버전으로 고정)
 
-실행 후 추가할 것: 명령, `pip freeze`, 결과 로그, 코드 수정 여부.
+<details><summary>pip freeze 전체</summary>
+
+```
+absl-py==2.1.0
+astor==0.8.1
+colorama==0.4.6
+cycler==0.11.0
+fonttools==4.38.0
+gast==0.2.2
+google-pasta==0.2.0
+grpcio==1.62.3
+h5py==3.8.0
+importlib-metadata==6.7.0
+Keras-Applications==1.0.8
+Keras-Preprocessing==1.1.2
+kiwisolver==1.4.5
+Markdown==3.4.4
+MarkupSafe==2.1.5
+matplotlib==3.5.3
+numpy==1.18.5
+opt-einsum==3.3.0
+packaging==24.0
+Pillow==9.5.0
+protobuf==3.20.3
+pyparsing==3.1.4
+python-dateutil==3.0.0
+scipy==1.7.3
+six==1.17.0
+tensorboard==1.15.0
+tensorflow==1.15.0
+tensorflow-estimator==1.15.1
+termcolor==2.3.0
+tqdm==4.68.2
+typing_extensions==4.7.1
+tzdata==2026.6
+Werkzeug==2.2.3
+wrapt==1.16.0
+zipp==3.15.0
+```
+</details>
+
+**수정한 것 (데이터 준비만)**
+- README의 전처리 데이터(Google Drive) 링크가 삭제됨, `generate_niid.py`가 쓰는 `sklearn.datasets.fetch_mldata`는 scikit-learn 0.22에서 삭제됨
+- → `data/mnist/generate_niid.py`를 복사한 `generate_niid_idx.py`에서 **MNIST 읽는 부분만** 같은 MNIST 원본 idx 파일 4개(train 60,000 + test 10,000 = 70,000장) 읽기로 바꿈. 클라 1,000개 분할 로직(숫자 2종 · power law)은 원본 그대로
+- 원본 분할 스크립트는 시드를 고정하지 않아 실행마다 클라별 장수가 조금씩 다름 (이번 실행 train 61,693장, README 통계 69,035장은 train+test 합)
+- 학습·집계 코드(`main.py`, `flearn/trainers/fedavg.py`, `fedbase.py`, `flearn/models/mnist/mclr.py`)는 **수정 없이** TF 1.15에서 실행됨
+
+**명령**
+```
+cd data/mnist && python generate_niid_idx.py <MNIST idx .gz 폴더>
+python -u main.py --dataset=mnist --optimizer=fedavg --model=mclr --learning_rate=0.03 --num_rounds=20 --clients_per_round=10 --eval_every=1 --batch_size=10 --num_epochs=20 --drop_percent=0
+```
+(`--seed` 생략 → 원본 기본값 0. 실행 로그의 Arguments에 `seed : 0`, `mu : 0` = 근접항 없는 FedAvg)
+
+**결과** (클라 1,000개 중 라운드마다 10개 선택, round 0 = 학습 전 평가)
+
+| 라운드 | 0 | 1 | 5 | 7 | 8 | 10 | 15 | 19 | 20 |
+|---|---|---|---|---|---|---|---|---|---|
+| 테스트 정확도 | 0.1047 | 0.4224 | 0.5695 | 0.7663 | 0.4050 | 0.5826 | 0.6740 | 0.8242 | 0.7967 |
+| 학습 손실 | 2.7035 | 1.9035 | 1.2092 | 0.7741 | 2.7848 | 1.6054 | 1.1051 | 0.5710 | — |
+
+- 20라운드 학습 손실 "—": 원본 `fedavg.py`의 최종 평가는 정확도 2줄만 출력하고 학습 손실은 출력하지 않음 (코드 수정 없이 실행했으므로 그대로 둠)
+- 정확도가 라운드마다 오르내림 (예: 7라운드 0.766 → 8라운드 0.405). 클라마다 숫자 2종만 갖고(non-IID), 라운드마다 다른 10개 클라를 뽑으며, 로컬 20 epoch로 클라 모델이 자기 숫자 쪽으로 많이 치우치기 때문 (FedProx 논문이 다루는 문제)
+- 근거 파일(레포에는 올리지 않고 실행 폴더에 보관): 전체 실행 로그 `logs/mnist_fedavg_r20.txt`, 환경 `pip_freeze.txt`, 수정한 데이터 스크립트 `data/mnist/generate_niid_idx.py`
+- 이 실행은 **공개 코드 환경 구성·실행·로그 생성 기록**이며 우리 실험과 수치를 비교하지 않음 (분할·클라 수·설정·초기 모델이 모두 다름)
 
 ### 우리 이식본 실행 기록
 
