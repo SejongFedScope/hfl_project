@@ -5,9 +5,10 @@ const charts = {};
 function subscribe(fn, tab = "overview") { listeners.push([fn, tab]); }  // 패널마다 render 함수 등록 (tab = 그 패널이 있는 탭, "all" = 항상)
 function notify() { listeners.forEach(([fn, tab]) => { if (tab === "all" || tab === state.tab) fn(state); }); }  // 안 보이는 탭은 그리지 않음
 
-function set_tab(tab) {  // 개요 / 심층 분석. 선택 상태(라운드·고정)는 두 탭이 같이 씀
+function set_tab(tab) {  // 개요 / 심층 분석 / 실험 실행. 선택 상태(라운드·고정)는 개요·분석이 같이 씀
   state.tab = tab;
-  history.replaceState(null, "", tab === "analysis" ? "#analysis" : location.pathname);  // 새로고침해도 같은 탭
+  history.replaceState(null, "", tab === "overview" ? location.pathname : "#" + tab);  // 새로고침해도 같은 탭
+  document.body.dataset.tab = tab;  // 실험 실행 탭에서는 KPI·범례 숨김 (style.css)
   document.querySelectorAll("[data-tab]").forEach(el => { el.hidden = el.dataset.tab !== tab; });
   document.querySelectorAll("[data-tab-btn]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tabBtn === tab)));
   Object.values(charts).forEach(c => c.resize());  // 숨어 있던 동안 크기가 0 이 된 차트를 다시 맞춤
@@ -40,12 +41,13 @@ function bind_focus(chart, target_of) {  // 패널 공통: 올림 = 강조, 클�
 const DIM = 0.2;  // 강조 대상이 아닌 것의 불투명도
 
 function base_text() {
-  return {fontFamily: "Pretendard, system-ui, sans-serif", fontSize: 11, color: css_var("--text-secondary")};
+  return {fontFamily: "Pretendard, system-ui, sans-serif", fontSize: 13, color: css_var("--text-secondary")};
 }
 
 function set_status(text, is_error) {
   const el = document.getElementById("status");
   el.textContent = text;
+  el.title = text;  // 머리말이 좁아 … 로 잘려도 마우스 올리면 전체
   el.classList.toggle("error", Boolean(is_error));
 }
 
@@ -186,7 +188,8 @@ async function load_bundle(exp) {  // 4.2 로그 API → state.bundle
   const done = done_rounds(state.bundle);
   document.getElementById("round").max = Math.max(1, done);
   render_legend(state.bundle);
-  set_status(done ? "" : `${exp}: 아직 끝난 라운드가 없음 (학습·통신 기록 없음). 배정·데이터 분포만 표시`, done === 0 && !live_on());
+  set_status(state.bundle.ended ? ended_text(exp, state.bundle)
+    : done ? "" : `${exp}: 아직 끝난 라운드가 없음 (학습·통신 기록 없음). 배정·데이터 분포만 표시`, done === 0 && !live_on());
   set_round(unfinished(state.bundle) ? done : state.round);  // 실행 중인 실험은 마지막 라운드부터 → 새 라운드를 따라감
   update_live_status();
 }
@@ -197,7 +200,12 @@ let polling = false;
 
 function live_on() { return document.getElementById("live").checked; }
 
-function unfinished(b) { return b && done_rounds(b) < b.config.rounds; }
+function unfinished(b) { return b && !b.ended && done_rounds(b) < b.config.rounds; }  // 화면에서 중지·실패한 실험(ended)은 더 안 늘어남
+
+function ended_text(exp, b) {
+  const why = {stopped: "중지함", failed: "실행 실패", interrupted: "중간에 끊김"}[b.ended.reason] || "멈춤";
+  return `${exp}: ${why} (계획 ${b.config.rounds}라운드 중 ${done_rounds(b)}라운드까지)`;
+}
 
 function update_live_status() {
   const b = state.bundle;
@@ -225,21 +233,24 @@ async function poll() {
     add_new_experiments(await fetch_json("/api/experiments"));
     const b = state.bundle;
     if (unfinished(b)) {
-      const nb = await fetch_json(`/api/${encodeURIComponent(state.exp)}/bundle`);
-      if (nb.train.length !== b.train.length || nb.comm.length !== b.comm.length) {
+      const exp = state.exp;
+      const nb = await fetch_json(`/api/${encodeURIComponent(exp)}/bundle`);
+      if (state.exp !== exp) return;  // 받는 사이에 다른 실험으로 바뀌었으면 버림
+      if (nb.ended || nb.train.length !== b.train.length || nb.comm.length !== b.comm.length) {
         const follow = state.round >= done_rounds(b);  // 마지막 라운드를 보고 있었으면 새 라운드를 따라감
         state.bundle = nb;
         const done = done_rounds(nb);
         document.getElementById("round").max = Math.max(1, done);
         if (follow) state.round = Math.max(1, done);
         set_round(state.round);  // 라벨·슬라이더 맞추고 다시 그림 (고정한 대상은 그대로)
-        set_status(unfinished(nb) ? "" : `${state.exp}: 실행 끝 (${done}라운드)`);
+        set_status(nb.ended ? ended_text(exp, nb) : unfinished(nb) ? "" : `${exp}: 실행 끝 (${done}라운드)`);
       }
       update_live_status();
     }
     if (unfinished(state.compare_bundle)) {
-      state.compare_bundle = await fetch_json(`/api/${encodeURIComponent(state.compare_exp)}/bundle`);
-      notify();
+      const cmp = state.compare_exp;
+      const cb = await fetch_json(`/api/${encodeURIComponent(cmp)}/bundle`);
+      if (state.compare_exp === cmp) { state.compare_bundle = cb; notify(); }  // 받는 사이에 비교 실험이 바뀌었으면 버림
     }
   } catch (err) {
     set_status(`자동 갱신 실패: ${err.message} (서버가 꺼졌으면 다시 켜세요)`, true);
@@ -269,10 +280,18 @@ async function init() {
     set_status(`실험 목록을 불러오지 못함: ${err.message}`, true);
     return;
   }
+  document.querySelectorAll("[data-tab-btn]").forEach(b => { b.onclick = () => set_tab(b.dataset.tabBtn); });  // 로그가 없어도 실험 실행 탭은 씀
+  const start_tab = ["analysis", "run"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "overview";
   if (!exps.length) {
+    set_tab(start_tab);
     document.getElementById("kpi").innerHTML = '<p class="empty">로그가 없습니다. 실험을 먼저 돌리거나 <code>python -m dashboard.app --sample</code> 로 시험 로그를 보세요. 실험이 시작되면 자동으로 열립니다.</p>';
     setInterval(async () => {  // 실험이 처음 생기면 화면을 새로 엶
-      try { if ((await fetch_json("/api/experiments")).length) location.reload(); } catch (err) { /* 서버가 아직 안 떴음 */ }
+      try {
+        if ((await fetch_json("/api/experiments")).length) {
+          if (typeof run_ui !== "undefined" && !run_ui.switched) history.replaceState(null, "", location.pathname);  // 실행 탭에서 돌린 첫 실험 → 개요로 열림
+          location.reload();
+        }
+      } catch (err) { /* 서버가 아직 안 떴음 */ }
     }, LIVE_MS);
     return;
   }
@@ -288,14 +307,13 @@ async function init() {
   document.getElementById("round").oninput = ev => set_round(Number(ev.target.value));
   document.getElementById("pin_chip").onclick = clear_pin;
   document.addEventListener("keydown", ev => {
-    if (ev.target.tagName === "SELECT" || ev.target.tagName === "INPUT") return;  // 선택 상자·슬라이더는 자기 키 동작 유지
+    if (ev.target.tagName === "SELECT" || ev.target.tagName === "INPUT" || state.tab === "run") return;  // 선택 상자·슬라이더는 자기 키 동작 유지, 실험 실행 탭은 라운드 키 안 씀
     if (ev.key === "Escape") clear_pin();
     if (ev.key === "ArrowLeft") set_round(state.round - 1);
     if (ev.key === "ArrowRight") set_round(state.round + 1);
   });
   document.getElementById("live").onchange = () => { set_status(""); update_live_status(); };
-  document.querySelectorAll("[data-tab-btn]").forEach(b => { b.onclick = () => set_tab(b.dataset.tabBtn); });
-  set_tab(location.hash === "#analysis" ? "analysis" : "overview");
+  set_tab(start_tab);
   await load_compare(cmp.value);
   await load_bundle(sel.value);
   setInterval(poll, LIVE_MS);

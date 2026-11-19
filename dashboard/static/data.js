@@ -41,8 +41,8 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
     animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
-    title: {text: note, left: 0, bottom: 0, textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},
-    grid: {left: 112, right: 8, top: 20, bottom: 24},
+    title: {text: note, left: 0, bottom: 0, textStyle: {fontSize: 13, fontWeight: 600, color: text.color, width: chart.getWidth() - 8, overflow: "break"}},  // 좁으면 두 줄로
+    grid: {left: 112, right: 8, top: 20, bottom: 42},
     visualMap: {show: false, min: 1, max, inRange: {color: SEQ_BLUE}},
     xAxis: {
       type: "category", data: [...Array(10).keys()].map(String), position: "top",
@@ -61,7 +61,7 @@ function render_data_heatmap(s) {  // 4.3.4 ③ 클라 × 숫자 표본 수, 엣
     },
     series: [{
       type: "heatmap", data, emphasis: {disabled: true},
-      label: {show: show_num, fontSize: 10, fontWeight: 600, formatter: p => p.value[2].toLocaleString()},
+      label: {show: show_num, fontSize: 12, fontWeight: 600, formatter: p => p.value[2].toLocaleString()},
     }],
   });
   bind_focus(chart, p => {

@@ -1,7 +1,7 @@
 """모니터링 화면 서버 — 담당 C(김영헌), WBS 4.2
 
 logs/ 의 실험 폴더를 읽어 화면에 JSON 으로 줌.
-실행: python -m dashboard.app → http://127.0.0.1:5050
+실행: python -m dashboard.app → http://127.0.0.1:5050  ('실험 실행' 탭에서 설정 바꿔 실험 실행: dashboard/runs.py)
       python -m dashboard.app --sample → 실제 로그 대신 dashboard/sample_logs/ (화면 개발용)
 """
 import argparse
@@ -9,22 +9,28 @@ import json
 
 from flask import Flask, abort, jsonify, render_template
 
+from dashboard.runs import SAMPLE_ROOT, done_rounds, is_live
+from dashboard.runs import bp as runs_bp
 from hfl.common import BASE_DIR, load_config, read_json
 
-SAMPLE_ROOT = BASE_DIR / "dashboard" / "sample_logs"
 
 app = Flask(__name__)
 app.config["LOG_ROOT"] = BASE_DIR / load_config()["log_dir"]  # --sample 이면 SAMPLE_ROOT 로 바뀜
+app.register_blueprint(runs_bp)  # '실험 실행' 탭 API (dashboard/runs.py)
 
 
 def exp_names():
     """LOG_ROOT 아래에서 설정·분할·배정 파일이 다 있는 폴더 이름 = 실험 ID
-    (runner 가 시작할 때 세 파일을 같이 씀 → 하나라도 없으면 깨진 폴더라 뺌)"""
+    (runner 가 시작할 때 세 파일을 같이 씀 → 하나라도 없으면 깨진 폴더라 뺌)
+    화면에서 돌린 실험은 run-<시각>/exp_… → ID 'run-<시각>/exp_…' (기본 실험 뒤, 최근 것이 아래)"""
     root = app.config["LOG_ROOT"]
     if not root.exists():
         return []
     need = ("config.json", "split.json", "assignment.json")
-    return sorted(p.name for p in root.iterdir() if all((p / f).exists() for f in need))
+    is_exp = lambda p: all((p / f).exists() for f in need)
+    base = sorted(p.name for p in root.iterdir() if is_exp(p))
+    runs = sorted((r.name, p.name) for r in root.glob("run-*") if r.is_dir() for p in r.iterdir() if is_exp(p))  # (실행, 실험) 순 → 같은 초의 '-2' 도 뒤로
+    return base + [f"{r}/{p}" for r, p in runs]
 
 
 def read_jsonl(path):
@@ -63,7 +69,7 @@ ANALYSIS = [  # '심층 분석' 탭: 큰 패널 4개 (2×2)
     {"id": "p_rank", "title": "클라 정확도 순위 변화", "tag": "순위", "desc": "라운드마다 클라 모델 정확도 순위 (1 = 가장 높음)"},
     {"id": "p_sim", "title": "클라 유사도", "tag": "군집", "desc": "숫자별 정확도가 얼마나 비슷한가 (코사인 유사도, 1 = 같음)"},
 ]
-SCRIPTS = ["state.js", "kpi.js", "structure.js", "comm.js", "data.js", "global.js", "analysis.js"]  # state.js 가 먼저 (나머지가 subscribe 함)
+SCRIPTS = ["state.js", "kpi.js", "structure.js", "comm.js", "data.js", "global.js", "analysis.js", "run.js"]  # state.js 가 먼저 (나머지가 subscribe 함)
 
 
 def log_source():
@@ -88,7 +94,7 @@ def experiments():
     return jsonify(exp_names())
 
 
-@app.get("/api/<exp>/bundle")
+@app.get("/api/<path:exp>/bundle")
 def bundle(exp):
     """→ {"config", "split" (인덱스 제외), "assignment", "train", "comm"}
     목록에 없는 exp 는 404 (로그 폴더 밖 경로 차단)
@@ -105,7 +111,18 @@ def bundle(exp):
         assignment=read_json(d / "assignment.json"),
         train=read_jsonl(d / "train.jsonl"),
         comm=read_jsonl(d / "comm.jsonl"),
+        ended=ended_of(exp, d),
     )
+
+
+def ended_of(exp, d):
+    """화면에서 돌린 실험이 중간에 멈췄으면 {"reason"} (중지·실패·대시보드가 꺼져서 끊김), 아니면 None
+    → 화면이 '실행 중'으로 착각해 계속 다시 받지 않게"""
+    if (d / "ended.json").exists():
+        return read_json(d / "ended.json")
+    if exp.startswith("run-") and not is_live(exp) and done_rounds(d) < read_json(d / "config.json")["rounds"]:
+        return {"reason": "interrupted"}
+    return None
 
 
 if __name__ == "__main__":
@@ -114,5 +131,5 @@ if __name__ == "__main__":
     ap.add_argument("--sample", action="store_true", help="dashboard/sample_logs/ 의 시험 로그로 실행")
     a = ap.parse_args()
     if a.sample:
-        app.config["LOG_ROOT"] = SAMPLE_ROOT
+        app.config["LOG_ROOT"] = SAMPLE_ROOT  # 실험 실행 탭은 미리보기만 (runs.run_allowed)
     app.run(host="127.0.0.1", port=a.port)

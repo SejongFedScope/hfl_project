@@ -1,7 +1,12 @@
-"""C 검사 — 담당 C(김영헌), 로그 API 엣지 케이스. 실행: python -m tests.test_dashboard"""
+"""C 검사 — 담당 C(김영헌), 로그 API 엣지 케이스 · 실험 실행 탭 API. 실행: python -m tests.test_dashboard"""
 import shutil
+import socket
 import tempfile
+import time
 from pathlib import Path
+from urllib.parse import urlsplit
+
+from hfl.common import load_config
 
 from dashboard.app import ANALYSIS, REGIONS, SAMPLE_ROOT, SCRIPTS, app
 
@@ -82,7 +87,143 @@ def test_make_report():
         shutil.rmtree(root)
 
 
+def test_run_validation():
+    """실험 실행 탭: 기본값 미리보기, 잘못된 입력은 400 (서버가 다시 검사), 시험 로그 모드는 실행 금지"""
+    c = app.test_client()
+    d = c.get("/api/run/defaults").get_json()
+    pv = c.post("/api/run/preview", json=d).get_json()["preview"]
+    assert pv["pref"]["assignment"] == {"E1": ["C1", "C2", "C4"], "E2": ["C3", "C5", "C6"]} and pv["pref"]["violations"] == 0
+    assert pv["random"]["mean_pref_rank"] == 1.5
+    bad_cases = {
+        "숫자 0개": {"client_digits": {**d["client_digits"], "C2": []}},
+        "안 나눠짐": {"client_digits": {**d["client_digits"], "C2": [0, 1, 2, 3, 4, 5, 6]}},
+        "숫자 범위 밖": {"client_digits": {**d["client_digits"], "C2": [3, 10]}},
+        "엣지 선호 동점(중복)": {"edge_prefs": {**d["edge_prefs"], "E1": ["C1", "C1", "C2", "C3", "C4", "C5"]}},
+        "클라 선호 빠짐": {"client_prefs": {**d["client_prefs"], "C3": ["E2"]}},
+        "라운드 0": {"rounds": 0},
+        "학습률 글자": {"lr": "0.1"},
+        "정수에 소수": {"batch_size": 3.5},
+        "참·거짓": {"seed": True},
+        "배정 방식 없음": {"methods": []},
+        "모르는 배정 방식": {"methods": ["pref", "best"]},
+        "초기 모델": {"init_model": "ones"},
+        "주입 라운드 > 라운드": {"inject": True, "rounds": 3, "inject_round": 5},
+        "클라 7번째": {"client_digits": {**d["client_digits"], "C7": [1]}},
+        "숫자에 글자 섞임": {"client_digits": {**d["client_digits"], "C1": [1, "a"]}},
+        "숫자에 객체": {"client_digits": {**d["client_digits"], "C1": [{}, {}]}},
+        "선호에 숫자 섞임": {"client_prefs": {**d["client_prefs"], "C1": ["E1", 1]}},
+        "MNIST 장수 초과": {"samples_per_client": 3000, "client_digits": {**d["client_digits"], "C1": [5], "C2": [5]}},  # 숫자 5 는 5,421장뿐
+        "한 숫자에 몰림": {"client_digits": {c: [1] for c in d["client_digits"]}},  # 1,200 × 6 > 6,742
+    }
+    for name, change in bad_cases.items():
+        r = c.post("/api/run/preview", json={**d, **change})
+        assert r.status_code == 400 and r.get_json()["errors"], name
+        assert c.post("/api/run", json={**d, **change}).status_code == 400, name
+    assert c.post("/api/run/preview", json={**d, "inject": False, "inject_round": None}).status_code == 200  # 주입을 끄면 주입 라운드는 안 봄
+    for raw in ('{"seed": NaN}', '{"rounds": Infinity}', "[1, 2]", '"x"', "5"):  # 화면은 안 보내지만 API 를 직접 부르면 → 500 이 아니라 400
+        assert c.post("/api/run/preview", data=raw, content_type="application/json").status_code == 400, raw
+    assert c.post("/api/run", data="{}", content_type="text/plain").status_code == 415  # 다른 사이트의 단순 POST(사전 확인 없음) 차단
+    assert c.post("/api/run/stop").status_code == 415
+    assert c.get("/api/run/status", headers={"Host": "evil.example:5050"}).status_code == 403  # DNS rebinding 차단
+    app.config["LOG_ROOT"] = SAMPLE_ROOT  # 시험 로그를 보고 있으면 (--sample 등) 실행 금지 → git 에 있는 시험 로그를 안 덮어씀
+    assert c.get("/api/run/defaults").get_json()["run_allowed"] is False
+    assert c.post("/api/run", json=d).status_code == 409
+    for raw in ('{"seed": ' + "9" * 400 + "}", "[" * 100000 + "]" * 100000):  # 아주 큰 정수, 아주 깊은 중첩 → 500 아님
+        assert c.post("/api/run/preview", data=raw, content_type="application/json").status_code == 400, raw[:20]
+
+
+def test_run_markers():
+    """화면에서 돌린 실험의 '멈춤' 표시: 덜 끝난 실험에만, 대시보드가 꺼졌다 켜져도 '중간에 끊김', 같은 초 -2 는 뒤로"""
+    import json
+    from dashboard import runs
+    root = Path(tempfile.mkdtemp())
+    try:
+        for tag in ("run-20990101-000000", "run-20990101-000000-2"):
+            shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", root / tag / "exp_pref_seed42")  # 시험 로그 = 3라운드 다 끝남
+        cut = root / "run-20990101-000000" / "exp_random_seed42"
+        shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", cut)
+        rows = [x for x in map(json.loads, (cut / "train.jsonl").read_text(encoding="utf-8").splitlines()) if x["round"] <= 1]
+        (cut / "train.jsonl").write_text("".join(json.dumps(x) + "\n" for x in rows), encoding="utf-8")  # 1/3 라운드에서 멈춤
+        app.config["LOG_ROOT"] = root
+        c = app.test_client()
+        assert c.get("/api/experiments").get_json() == ["run-20990101-000000/exp_pref_seed42", "run-20990101-000000/exp_random_seed42",
+                                                        "run-20990101-000000-2/exp_pref_seed42"]
+        assert c.get("/api/run-20990101-000000/exp_pref_seed42/bundle").get_json()["ended"] is None  # 다 끝난 실험
+        assert c.get("/api/run-20990101-000000/exp_random_seed42/bundle").get_json()["ended"] == {"reason": "interrupted"}  # 재시작 뒤
+
+        runs.job.update(proc=None, dir=root / "run-20990101-000000", tag="run-20990101-000000", rounds=3, marked=False,
+                        exps=["run-20990101-000000/exp_pref_seed42", "run-20990101-000000/exp_random_seed42"])
+        runs._mark_ended("stopped")  # 두 실험 중 두 번째에서 중지한 경우
+        assert not (root / "run-20990101-000000" / "exp_pref_seed42" / "ended.json").exists()
+        assert c.get("/api/run-20990101-000000/exp_random_seed42/bundle").get_json()["ended"]["reason"] == "stopped"
+    finally:
+        runs.job.update(proc=None, dir=None, tag=None, exps=[], marked=False, rounds=0)
+        app.config["LOG_ROOT"] = SAMPLE_ROOT
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _ports_free(cfg):
+    for url in [cfg["central_url"], *cfg["edge_urls"].values()]:
+        u = urlsplit(url)
+        with socket.socket() as sk:
+            sk.settimeout(1)
+            if sk.connect_ex((u.hostname, u.port)) == 0:
+                return False
+    return True
+
+
+def _wait(c, cond, timeout=180):
+    end = time.time() + timeout
+    while time.time() < end:
+        st = c.get("/api/run/status").get_json()
+        if cond(st):
+            return st
+        time.sleep(0.5)
+    raise AssertionError(f"시간 초과: {st}")
+
+
+def test_run_real():
+    """실제 실행: 바꾼 설정으로 학습 → run-…/exp_… 가 목록에 뜸, 기존 실험 그대로 / 중지하면 서버까지 꺼짐"""
+    cfg = load_config()
+    if not _ports_free(cfg):
+        print("SKIP test_run_real (서버 포트 사용 중: 떠 있는 run_all 을 끄고 다시)")
+        return
+    root = Path(tempfile.mkdtemp())
+    shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", root / "exp_pref_seed42")  # 원래 실험 (덮어쓰면 안 됨)
+    before = (root / "exp_pref_seed42" / "train.jsonl").read_bytes()
+    app.config["LOG_ROOT"] = root
+    c = app.test_client()
+    try:
+        d = c.get("/api/run/defaults").get_json()
+        body = {**d, "rounds": 2, "seed": 7, "methods": ["pref"], "client_digits": {**d["client_digits"], "C2": [3, 4, 5, 6]}}
+        r = c.post("/api/run", json=body)
+        assert r.status_code == 202, r.get_json()
+        exp = r.get_json()["exps"][0]
+        assert exp.endswith("/exp_pref_seed7")
+        assert c.post("/api/run", json=body).status_code == 409  # 한 번에 하나
+        st = _wait(c, lambda s: not s["running"])
+        assert st["returncode"] == 0, st["log_tail"]
+        assert c.get("/api/experiments").get_json() == ["exp_pref_seed42", exp]
+        b = c.get(f"/api/{exp}/bundle").get_json()
+        assert b["config"]["seed"] == 7 and b["config"]["client_digits"]["C2"] == [3, 4, 5, 6]
+        assert sum(x["target"] == "global" for x in b["train"]) == 2
+        assert (root / "exp_pref_seed42" / "train.jsonl").read_bytes() == before
+
+        r = c.post("/api/run", json={**body, "rounds": 100})  # 중지: run_all 과 서버 3개 모두 꺼져야 다음 실행 가능
+        assert r.status_code == 202
+        _wait(c, lambda s: (root / r.get_json()["exps"][0] / "train.jsonl").exists())
+        st = c.post("/api/run/stop", json={}).get_json()
+        assert st["stopped"] and not st["running"]
+        assert st["log_tail"], "중지하면 실행 기록이 사라짐 (출력 버퍼)"
+        _wait(c, lambda s: _ports_free(cfg), timeout=15)
+        stopped = c.get(f"/api/{r.get_json()['exps'][0]}/bundle").get_json()
+        assert stopped["ended"]["reason"] == "stopped"  # 화면이 '실행 중'으로 착각하지 않게
+    finally:
+        app.config["LOG_ROOT"] = SAMPLE_ROOT
+        shutil.rmtree(root, ignore_errors=True)
+
+
 if __name__ == "__main__":
-    for t in (test_edge_cases, test_make_report):
+    for t in (test_edge_cases, test_make_report, test_run_validation, test_run_markers, test_run_real):
         t()
         print("PASS", t.__name__)

@@ -91,12 +91,12 @@ function render_tree(s) {  // 4.3.2 ① 계층 트리
       symbol: "circle", symbolSize: 11, expandAndCollapse: false, roam: false,
       lineStyle: {width: 1.5, curveness: 0.5},
       label: {
-        position: "left", verticalAlign: "middle", align: "right", fontSize: 11,
+        position: "left", verticalAlign: "middle", align: "right", fontSize: 13,
         rich: {
-          id: {fontWeight: 700, color: css_var("--text-primary"), fontSize: 12},
-          d: {color: text.color, fontSize: 11},
-          bad: {color: critical, fontWeight: 700, fontSize: 11},
-          test: {color: css_var("--text-secondary"), fontSize: 11, backgroundColor: css_var("--warning"), padding: [1, 3], borderRadius: 2},
+          id: {fontWeight: 700, color: css_var("--text-primary"), fontSize: 14},
+          d: {color: text.color, fontSize: 13},
+          bad: {color: critical, fontWeight: 700, fontSize: 13},
+          test: {color: css_var("--text-secondary"), fontSize: 13, backgroundColor: css_var("--warning"), padding: [1, 3], borderRadius: 2},
         },
       },
       leaves: {label: {position: "right", align: "left"}},
@@ -150,7 +150,7 @@ function render_assign_matrix(s) {  // 4.3.3 ① 선호·배정 행렬
   draw(chart, {
     animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
     textStyle: text,
-    title: {text: `${a.method === "pref" ? "선호 배정" : "무작위 배정"} · ${summary}`, bottom: 0, left: 0, textStyle: {fontSize: 11, fontWeight: 400, color: text.color}},
+    title: {text: `${a.method === "pref" ? "선호 배정" : "무작위 배정"} · ${summary}`, bottom: 0, left: 0, textStyle: {fontSize: 13, fontWeight: 400, color: text.color}},
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
     grid: {left: clients.some(c => !(c in ce)) ? 72 : 32, right: 4, top: 22, bottom: 28},  // 미배정 클라가 있으면 이름 칸을 넓힘
     xAxis: {

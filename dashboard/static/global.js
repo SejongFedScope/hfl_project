@@ -3,7 +3,7 @@ function global_series(b) {  // 라운드별 공동 모델 기록 (중앙 2차 �
 }
 
 function draw_empty(chart, msg) {  // 그릴 기록이 없을 때 이유를 가운데에
-  draw(chart, {title: {text: msg, left: "center", top: "middle", textStyle: {fontSize: 12, fontWeight: 400, color: css_var("--text-muted")}}});
+  draw(chart, {title: {text: msg, left: "center", top: "middle", textStyle: {fontSize: 14, fontWeight: 400, color: css_var("--text-muted")}}});
 }
 
 function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라운드 × 숫자 정확도
@@ -61,9 +61,9 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || `${p.seriesName} · ${p.name}: ${p.seriesName === "손실" ? Number(p.value).toFixed(3) : (p.value * 100).toFixed(1) + "%"}`},
     title: [
-      {text: `공동 모델 정확도  ${now ? (now.acc * 100).toFixed(1) + "%" : "–"}`, left: 0, top: 0, textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},  // 값 = 선택 라운드
-      {text: `손실  ${now ? now.loss.toFixed(3) : "–"}`, left: "56%", top: 0, textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},
-      {text: worst_note, left: 0, top: "36%", textStyle: {fontSize: 11, fontWeight: 600, color: text.color}},
+      {text: `공동 모델 정확도  ${now ? (now.acc * 100).toFixed(1) + "%" : "–"}`, left: 0, top: 0, textStyle: {fontSize: 13, fontWeight: 600, color: text.color}},  // 값 = 선택 라운드
+      {text: `손실  ${now ? now.loss.toFixed(3) : "–"}`, left: "56%", top: 0, textStyle: {fontSize: 13, fontWeight: 600, color: text.color}},
+      {text: worst_note, left: 0, top: "36%", textStyle: {fontSize: 13, fontWeight: 600, color: text.color}},
     ],
     grid: [
       {left: 40, right: "48%", top: 22, height: "22%"},  // 정확도·손실은 단위가 달라서 축을 나눠 나란히
@@ -76,14 +76,14 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
         axisLabel: {formatter: v => Math.round(v * 100) + "%"}, splitLine: {lineStyle: {color: grid_line}}},
       {type: "value", gridIndex: 1, splitNumber: 1, scale: true, axisLabel: {formatter: v => v.toFixed(1)}, splitLine: {lineStyle: {color: grid_line}}},
       {type: "category", gridIndex: 2, data: [...Array(10).keys()].map(String), inverse: true, axisTick: {show: false}, axisLine: {show: false},
-        axisLabel: {color: ink, fontWeight: 700, fontSize: 10, interval: 0}},
+        axisLabel: {color: ink, fontWeight: 700, fontSize: 12, interval: 0}},
     ],
     visualMap: {show: false, seriesIndex: 2, min: acc_floor, max: 1, inRange: {color: SEQ_BLUE}},  // 실제 값 범위에 맞춰 칸 색 차이가 보이게
     series: [
       {...line("공동 정확도", g.map(x => (x ? x.acc : null)), v => (v * 100).toFixed(1) + "%"), xAxisIndex: 0, yAxisIndex: 0},
       {...line("손실", g.map(x => (x ? x.loss : null)), v => Number(v).toFixed(3)), xAxisIndex: 1, yAxisIndex: 1},
       {type: "heatmap", xAxisIndex: 2, yAxisIndex: 2, data: cells, emphasis: {disabled: true},
-        label: {show: show_num, fontSize: 9, formatter: p => Math.round(p.value[2] * 100)}},
+        label: {show: show_num, fontSize: 11, formatter: p => Math.round(p.value[2] * 100)}},
     ],
   });
   bind_focus(chart, (p, is_click) => {
@@ -148,8 +148,8 @@ function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도
     tooltip: {trigger: "axis", valueFormatter: v => (v === null || v === undefined ? "–" : (v * 100).toFixed(1) + "%")},
     title: {text: max_diff === null ? (done_rounds(c) ? "" : "비교 실험에 끝난 라운드가 없어 곡선 비교 불가")
       : `공동 정확도 최대 차이 ${max_diff.toFixed(1)}%p` + (max_diff < 0.05 ? " → 두 배정의 공동 모델이 같음" : ""),
-      left: 0, top: 0, textStyle: {fontSize: 11, fontWeight: 600, color: ink}},
-    legend: {top: 18, left: 0, itemWidth: 16, itemHeight: 2, textStyle: {fontSize: 10, color: text.color}},
+      left: 0, top: 0, textStyle: {fontSize: 13, fontWeight: 600, color: ink}},
+    legend: {top: 18, left: 0, itemWidth: 16, itemHeight: 2, textStyle: {fontSize: 12, color: text.color}},
     grid: {left: 40, right: 12, top: 42, bottom: 18},
     xAxis: {type: "category", data: [...Array(R).keys()].map(i => `R${i + 1}`), axisTick: {show: false},
       axisLine: {lineStyle: {color: css_var("--border")}}, axisLabel: {color: ink, fontWeight: 700, interval: R > 12 ? 1 : 0}},

@@ -15,6 +15,7 @@
   <div class="tabs" role="tablist" aria-label="화면">
     <button type="button" role="tab" data-tab-btn="overview" aria-selected="true">개요</button>
     <button type="button" role="tab" data-tab-btn="analysis" aria-selected="false">심층 분석</button>
+    <button type="button" role="tab" data-tab-btn="run" aria-selected="false">실험 실행</button>
   </div>
   <label class="control">실험 <select id="exp"></select></label>
   <label class="control">비교 실험 <select id="compare_exp"></select></label>
@@ -50,5 +51,47 @@
 
 <main class="analysis" data-tab="analysis" hidden>
   {% for p in analysis %}{{ panel(p) }}{% endfor %}
+</main>
+
+<main class="runner" data-tab="run" hidden>
+  <section class="panel" aria-labelledby="run_h1">
+    <h3 id="run_h1"><span class="badge">1</span>학습 설정<span class="tag">설정</span></h3>
+    <p class="desc">명세 고정: 클라 6 · 엣지 2 · 엣지 정원 3 · 서버 주소</p>
+    <div class="run_body">
+      <div id="run_numbers" class="run_num"></div>
+      <h4>초기 모델</h4><div id="run_init" class="seg"></div>
+      <h4>배정 방식 (1개 이상)</h4><div id="run_methods" class="run_checks"></div>
+      <h4>결함 주입</h4><div id="run_inject" class="run_checks"></div>
+    </div>
+  </section>
+  <section class="panel" aria-labelledby="run_h2">
+    <h3 id="run_h2"><span class="badge">2</span>데이터 분할<span class="tag">클라 × 숫자</span></h3>
+    <p class="desc">칸을 눌러 클라가 가질 숫자를 켜고 끔. 같은 숫자를 가진 클라끼리 이미지가 겹치지 않게 나눔</p>
+    <div class="run_body"><div id="run_digits"></div></div>
+  </section>
+  <section class="panel" aria-labelledby="run_h3">
+    <h3 id="run_h3"><span class="badge">3</span>선호 순위<span class="tag">배정 입력</span></h3>
+    <p class="desc">클라 → 엣지 순위, 엣지 → 클라 순위 (동점 없이 모두)</p>
+    <div class="run_body">
+      <h4>클라가 먼저 원하는 엣지</h4><div id="run_client_prefs"></div>
+      <h4>엣지가 원하는 클라 순서</h4><div id="run_edge_prefs" class="run_edges"></div>
+    </div>
+  </section>
+  <section class="panel" aria-labelledby="run_h4">
+    <h3 id="run_h4"><span class="badge">4</span>배정 미리보기 · 실행<span class="tag">실행</span></h3>
+    <p class="desc">학습 없이 배정만 바로 계산. 실행하면 logs/run-시각/ 에 새 실험 (기존 실험은 그대로)</p>
+    <div class="run_body">
+      <div id="run_preview"></div>
+      <ul id="run_errors" class="run_errors" aria-live="polite"></ul>
+      <div class="run_actions">
+        <span id="run_changed" class="run_changed"></span>
+        <button type="button" id="run_reset" class="btn">기본값으로</button>
+        <button type="button" id="run_stop" class="btn" hidden>중지</button>
+        <button type="button" id="run_go" class="btn primary">실행</button>
+      </div>
+      <p id="run_state" class="run_state" role="status"></p>
+      <pre id="run_log" class="run_log" aria-label="실행 기록 마지막 줄"></pre>
+    </div>
+  </section>
 </main>
 {% endblock %}

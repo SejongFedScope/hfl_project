@@ -5,10 +5,12 @@ playwright 가 없으면 건너뜀: pip install playwright && python -m playwrig
 import json
 import logging
 import shutil
+import socket
 import sys
 import tempfile
 import threading
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from werkzeug.serving import make_server
 
@@ -130,6 +132,14 @@ def check_layout(browser, url, errors):
     pg = _open(browser, url, errors)
     assert pg.evaluate("() => document.documentElement.scrollHeight - innerHeight") <= 0
     assert pg.evaluate("() => [...document.querySelectorAll('.panel')].filter(p => p.scrollHeight > p.clientHeight).length") == 0
+    top_h = pg.evaluate("() => document.getElementById('top').offsetHeight")
+    pg.evaluate("() => set_status('run-20261119-130512/exp_random_seed42: 실행 중으로 보임 · 끝난 라운드 7/20 · 2초마다 자동 갱신 ' + 'x'.repeat(80))")
+    assert pg.evaluate("() => document.getElementById('top').offsetHeight") == top_h, "긴 상태 문구에 머리말이 줄바꿈됨"
+    assert pg.evaluate("() => document.documentElement.scrollWidth - innerWidth") <= 0, "긴 상태 문구에 페이지가 옆으로 넘침"
+    _select_exp(pg, "exp_random_seed42_inject")
+    pg.evaluate("() => set_round(2)")  # 결과 칸이 가장 긴 라운드 (409 시험 2건)
+    wide = pg.evaluate("() => [...document.querySelectorAll('#p_requests, #p_clients, .sub_table')].filter(e => e.scrollWidth > e.clientWidth).map(e => e.id || e.className)")
+    assert not wide, f"표가 옆으로 잘림: {wide}"
     pg.close()
 
 
@@ -155,11 +165,95 @@ def check_tabs(browser, url, errors):
     pg.close()
 
 
+def check_run_tab(browser, url, errors):
+    """실험 실행 탭: 토글 → 미리보기 갱신, 잘못된 값이면 실행 버튼 막힘, 기본값으로 되돌림, 엣지 순위 ↑↓, 라운드 키 안 먹음"""
+    pg = _open(browser, url, errors)
+    pg.get_by_role("tab", name="실험 실행").click()
+    expect(pg.locator("#kpi")).to_be_hidden()  # 이 탭에서는 KPI·범례·실험·라운드 컨트롤 숨김
+    expect(pg.locator("#round")).to_be_hidden()
+    pv = pg.locator("#run_preview table")
+    expect(pv).to_contain_text("C1·C2·C4")  # 기본 설정의 선호 배정 E1
+    expect(pg.locator("#run_go")).to_be_enabled()
+    expect(pg.locator("#run_changed")).to_have_text("기본값 그대로")
+    expect(pg.locator("#run_inject_round")).to_be_disabled()  # 결함 주입을 켜야 라운드 입력
+
+    pg.get_by_label("C2 숫자 6").check(force=True)  # 칸은 글자 span 이 덮고 있음 → force
+    expect(pg.locator("#run_sum_C2")).to_have_text("4개 · 300장")
+    expect(pg.locator("#run_changed")).to_have_text("기본값과 다른 칸 1개 (주황)")
+    expect(pv).to_contain_text("0·1·2·3·4·5·6")  # E1 숫자에 6 추가
+
+    for d in (3, 4, 5, 6):  # C2 숫자를 다 끄면 오류 + 실행 막힘
+        pg.get_by_label(f"C2 숫자 {d}").uncheck(force=True)
+    expect(pg.locator("#run_errors")).to_contain_text("C2")
+    expect(pg.locator("#run_row_C2")).to_have_class("bad_row")
+    expect(pg.locator("#run_go")).to_be_disabled()
+    pg.get_by_role("button", name="기본값으로").click()
+    pg.fill("#run_rounds", "0")  # 입력칸 자체도 빨갛게 + 한글 라벨 오류
+    expect(pg.locator("#run_rounds")).to_have_attribute("aria-invalid", "true")
+    expect(pg.locator("#run_errors")).to_contain_text("라운드 수")
+
+    pg.get_by_role("button", name="기본값으로").click()
+    expect(pg.locator("#run_sum_C2")).to_have_text("3개 · 400장")
+    expect(pg.locator("#run_go")).to_be_enabled()
+
+    pg.get_by_role("button", name="E1 순위에서 C6 올리기").click()  # 4위 → 3위
+    expect(pg.locator(".run_edge").first.locator("li").nth(2)).to_contain_text("C6")
+    r0 = pg.evaluate("() => state.round")
+    pg.keyboard.press("ArrowRight")
+    assert pg.evaluate("() => state.round") == r0
+    assert pg.evaluate("() => document.documentElement.scrollHeight - innerHeight") <= 0
+    pg.close()
+
+
+def check_sample_blocks_run(browser, url, errors):
+    """시험 로그를 보는 중이면 미리보기는 되고 실행은 막힘 (이유 표시)"""
+    pg = _open(browser, url, errors)
+    pg.get_by_role("tab", name="실험 실행").click()
+    expect(pg.locator("#run_preview table")).to_contain_text("C1·C2·C4")
+    expect(pg.locator("#run_errors")).to_contain_text("시험 로그")
+    expect(pg.locator("#run_go")).to_be_disabled()
+    pg.close()
+
+
 def check_empty_run(browser, url, errors):
     """시작 직후 죽은 실험(기록 0개)도 오류 없이 안내 문구"""
     pg = _open(browser, url, errors)
     expect(pg.locator("#status")).to_contain_text("끝난 라운드")  # '없음' 또는 '0/3 · 자동 갱신'
     expect(pg.locator("#kpi")).to_contain_text("0 라운드")
+    pg.close()
+
+
+def check_run_fail(browser, url, errors):
+    """서버 포트가 막혀 run_all 이 바로 실패: '실패' 와 실행 기록 표시, 버튼 다시 켜짐, 상태 확인 반복 멈춤"""
+    from hfl.common import load_config
+    u = urlsplit(load_config()["central_url"])
+    blocker = socket.socket()
+    blocker.bind((u.hostname, u.port))
+    blocker.listen()
+    try:
+        pg = browser.new_page(viewport={"width": 1920, "height": 1080})
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(url + "#run")
+        expect(pg.locator("#run_preview table")).to_contain_text("C1·C2·C4")
+        pg.fill("#run_rounds", "1")
+        pg.get_by_role("button", name="실행").click()
+        expect(pg.locator("#run_state")).to_contain_text("실패", timeout=60000)
+        expect(pg.locator("#run_log")).to_contain_text("포트")
+        expect(pg.locator("#run_go")).to_be_enabled()
+        pg.wait_for_function("() => run_ui.watching === null", timeout=5000)
+        pg.close()
+    finally:
+        blocker.close()
+
+
+def check_no_logs(browser, url, errors):
+    """로그가 하나도 없어도 실험 실행 탭은 열려서 첫 실험을 돌릴 수 있음"""
+    pg = browser.new_page(viewport={"width": 1920, "height": 1080})
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(url)
+    expect(pg.locator("#kpi")).to_contain_text("로그가 없습니다")
+    pg.get_by_role("tab", name="실험 실행").click()
+    expect(pg.locator("#run_preview table")).to_contain_text("C1·C2·C4")
     pg.close()
 
 
@@ -206,6 +300,7 @@ def test_ui():
     shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", empty_root / "exp_empty")
     (empty_root / "exp_empty" / "train.jsonl").unlink()
     (empty_root / "exp_empty" / "comm.jsonl").unlink()
+    no_logs_root = Path(tempfile.mkdtemp())  # 실험 폴더가 하나도 없음
     live_root = Path(tempfile.mkdtemp())  # 라운드 1까지만 쓴 '실행 중' 실험
     run = live_root / "exp_pref_seed42"
     shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", run)
@@ -215,8 +310,9 @@ def test_ui():
     try:
         with sync_playwright() as p:
             browser = _launch(p)
-            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs]),
-                    (empty_root, [check_empty_run]),
+            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs, check_sample_blocks_run]),
+                    (empty_root, [check_empty_run, check_run_tab]),
+                    (no_logs_root, [check_no_logs, check_run_fail]),
                     (live_root, [lambda b, u, e: check_live(b, u, e, live_root)])]
             for root, checks in plan:
                 srv, url = _serve(root)
@@ -232,6 +328,7 @@ def test_ui():
             browser.close()
     finally:
         shutil.rmtree(empty_root)
+        shutil.rmtree(no_logs_root)
         shutil.rmtree(live_root)
 
 

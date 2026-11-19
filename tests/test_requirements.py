@@ -119,7 +119,8 @@ def check_dashboard(exps):
     """6. 저장된 로그를 화면 API 로 조회 (라운드·클라 연동은 tests/test_dashboard.py · 화면 시연으로 확인)"""
     c = app.test_client()
     listed = c.get("/api/experiments").get_json()
-    assert sorted(listed) == sorted(e["id"] for e in exps), f"화면 실험 목록 {listed}"
+    base = [x for x in listed if not x.startswith("run-")]  # run-<시각>/… = 화면 '실험 실행' 탭에서 추가로 돌린 실험
+    assert sorted(base) == sorted(e["id"] for e in exps), f"화면 실험 목록 {listed}"
     for e in exps:
         b = c.get(f"/api/{e['id']}/bundle").get_json()
         assert len(b["train"]) == len(e["train"]) and len(b["comm"]) == len(e["comm"]), f"{e['id']}: 화면이 받은 줄 수가 로그와 다름"

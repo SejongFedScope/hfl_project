@@ -54,18 +54,21 @@ pip install -r requirements.txt
 ```bash
 python -m tests.test_learning      # 집계 손계산 · 분할 중복
 python -m tests.test_server        # 배정 위반 · 409
-python -m tests.test_dashboard     # 로그 API 엣지 케이스 · 보고서 생성
+python -m tests.test_dashboard     # 로그 API 엣지 케이스 · 보고서 생성 · 실험 실행 탭 (실제로 2라운드 실행)
 python -m tests.test_ui            # 화면 클릭·키보드 동작 (playwright 있을 때만, 없으면 SKIP)
 python -m scripts.run_all          # 서버 3개 + 실험 3개 (pref, random, pref+결함 주입) → logs/
+python -m scripts.run_all --methods pref,random [--inject]   # 고른 배정 방식만
 python -m scripts.make_report      # logs/ → docs/report.md 표 + docs/img/ 그래프
 python -m tests.test_requirements  # 명세 필수 6항목 O/X (run_all 다음에)
-python -m dashboard.app            # http://127.0.0.1:5050
+python -m dashboard.app            # http://127.0.0.1:5050  ('실험 실행' 탭에서 설정 바꿔 실행 → logs/run-<시각>/)
 python -m dashboard.app --sample   # 실제 로그 대신 dashboard/sample_logs/ 시험 로그로 화면 보기
 ```
 
 - `run_all` 은 약 10초 (첫 실행은 MNIST 다운로드로 더 걸림). 서버 출력은 `logs/servers.log`
 - 같은 실험을 다시 돌리면 그 실험 폴더의 로그를 지우고 새로 씀. 시드 고정이라 결과는 같음
 - 포트(5003, 5001, 5002)가 이미 사용 중이면 시작하지 않음 → 떠 있는 서버를 끄거나 `configs/default.json` 주소 변경
+- 다른 설정 파일로 돌리기: 환경변수 `HFL_CONFIG=<파일>`. 화면 '실험 실행' 탭이 이 방식으로 `logs/run-<시각>/run_config.json` 을 만들어 돌림 (기존 실험은 덮어쓰지 않음)
+- `init_model`: 초기 모델 `zeros`(기본, 전부 0) / `normal`(시드로 정규분포)
 
 서버를 따로 띄울 때 (터미널 4개, 각각 가상환경 켜고):
 
@@ -84,7 +87,7 @@ python -m runner.client_runner --method pref        # random, 또는 --inject
 
 ```
 hfl_project/
-├─ configs/default.json         B   시드·분할·선호 순위·정원·서버 주소
+├─ configs/default.json         B   시드·초기 모델·분할·선호 순위·정원·서버 주소
 ├─ hfl/
 │  ├─ data_split.py             A   MNIST 로드, 숫자별 중복 없는 분할
 │  ├─ model.py                  A   모델, 로컬 학습, 평가(숫자별 정확도)

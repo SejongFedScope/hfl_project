@@ -38,14 +38,14 @@ function render_local_vs_global(s) {  // 연합 효과: 클라 혼자 학습한 
     animation: false,
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
-    title: {text: note, left: 0, bottom: 0, textStyle: {fontSize: 12, fontWeight: 600, color: css_var("--text-primary")}},
+    title: {text: note, left: 0, bottom: 0, textStyle: {fontSize: 14, fontWeight: 600, color: css_var("--text-primary")}},
     grid: {left: 150, right: 12, top: 24, bottom: 30},
     visualMap: {show: false, min: 0, max: 1, inRange: {color: SEQ_BLUE}},
     xAxis: {type: "category", data: [...Array(10).keys()].map(String), position: "top", axisTick: {show: false}, axisLine: {show: false},
       axisLabel: {color: css_var("--text-primary"), fontWeight: 700}},
     yAxis: {type: "category", data: labels, inverse: true, triggerEvent: true, axisTick: {show: false}, axisLine: {show: false},
       axisLabel: {color: css_var("--text-primary"), fontWeight: 600}},
-    series: [{type: "heatmap", data, emphasis: {disabled: true}, label: {show: true, fontSize: 11, formatter: p => Math.round(p.value[2] * 100)}}],
+    series: [{type: "heatmap", data, emphasis: {disabled: true}, label: {show: true, fontSize: 13, formatter: p => Math.round(p.value[2] * 100)}}],
   });
   bind_focus(chart, p => {
     if (p.componentType === "yAxis") { const c = String(p.value).split(" ")[0]; return c.startsWith("C") ? {type: "client", id: c} : null; }
@@ -76,7 +76,7 @@ function render_traffic(s) {  // 트래픽 sankey: 클라 → 엣지 → 중앙,
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.dataType === "edge" ? `${esc(p.data.source)} → ${esc(p.data.target)}: ${mb(p.data.value)}` : `${esc(p.name)}: ${mb(p.value)}`)},
     title: {text: `라운드 1~${s.round} 누적 ${mb(total)} · 선 굵기 = 바이트, 가는 선 = 배정 밖·시험 요청`, left: 0, bottom: 0,
-      textStyle: {fontSize: 12, fontWeight: 600, color: css_var("--text-primary")}},
+      textStyle: {fontSize: 14, fontWeight: 600, color: css_var("--text-primary")}},
     series: [{
       type: "sankey", left: 8, right: 90, top: 12, bottom: 30, nodeWidth: 14, nodeGap: 10, draggable: false, layoutIterations: 0,
       emphasis: {disabled: true},
@@ -163,14 +163,14 @@ function render_similarity(s) {  // 클라끼리 숫자별 정확도가 얼마�
     animation: false,
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
-    title: {text: note, left: 0, bottom: 0, textStyle: {fontSize: 12, fontWeight: 600, color: css_var("--text-primary")}},
+    title: {text: note, left: 0, bottom: 0, textStyle: {fontSize: 14, fontWeight: 600, color: css_var("--text-primary")}},
     grid: {left: 76, right: 12, top: 24, bottom: 30},
     visualMap: {show: false, min: 0, max: 1, inRange: {color: SEQ_BLUE}},
     xAxis: {type: "category", data: clients.map(label), position: "top", axisTick: {show: false}, axisLine: {show: false},
       axisLabel: {color: css_var("--text-primary"), fontWeight: 600}},
     yAxis: {type: "category", data: clients.map(label), inverse: true, triggerEvent: true, axisTick: {show: false}, axisLine: {show: false},
       axisLabel: {color: css_var("--text-primary"), fontWeight: 600}},
-    series: [{type: "heatmap", data, emphasis: {disabled: true}, label: {show: true, fontSize: 11, formatter: p => p.value[2].toFixed(2)}}],
+    series: [{type: "heatmap", data, emphasis: {disabled: true}, label: {show: true, fontSize: 13, formatter: p => p.value[2].toFixed(2)}}],
   });
   bind_focus(chart, p => {
     if (p.componentType === "yAxis") return {type: "client", id: String(p.value).split(" ")[0]};

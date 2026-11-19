@@ -96,8 +96,8 @@ function render_comm_heatmap(s) {  // 4.3.7 ② 링크 × 라운드, 색 = 성�
       },
     },
     series: [
-      {type: "heatmap", data, emphasis: {disabled: true}, label: {show: show_num, fontSize: 10}},
-      {type: "heatmap", data: fail_data, emphasis: {disabled: true}, label: {show: show_fail, fontSize: 10}},  // 실패 칸: 색 고정, 좁으면 글자 숨김 (툴팁·요청 목록엔 그대로)
+      {type: "heatmap", data, emphasis: {disabled: true}, label: {show: show_num, fontSize: 12}},
+      {type: "heatmap", data: fail_data, emphasis: {disabled: true}, label: {show: show_fail, fontSize: 12}},  // 실패 칸: 색 고정, 좁으면 글자 숨김 (툴팁·요청 목록엔 그대로)
     ],
   });
   bind_focus(chart, (p, is_click) => {
@@ -132,7 +132,7 @@ function render_request_table(s) {  // 4.3.8 ② 선택 라운드 요청 목록
     const cells = [
       String(i + 1), `${x.src} → ${x.dst}`, x.api, `v${x.model_version}`,
       x.ok ? `${Math.round(x.latency_ms)} ms` : `${(x.latency_ms / 1000).toFixed(1)} s`,
-      x.ok ? "200" : `${fail_text(x)}${x.kind === "injected" ? " · injected" : ""}`,
+      x.ok ? "200" : `${fail_text(x)}${x.kind === "injected" ? " 시험" : ""}`,  // 시험 = 일부러 넣은 요청 (kind injected, 노란 줄)
     ];
     cells.forEach((v, ci) => {
       const td = document.createElement("td");
