@@ -18,9 +18,9 @@
 
 | 요청 | 본문 | 응답 200 | 오류 |
 |---|---|---|---|
-| `POST /start` | `{"exp_id": str, "clients": ["C1","C2","C4"]}` | `{"ok": true, "edge", "clients"}` | |
+| `POST /start` | `{"exp_id": str, "clients": ["C1","C2","C4"], "deadline_sec": 2}` — `deadline_sec` 는 선택 (지연·중단 실험만) | `{"ok": true, "edge", "clients"}` | |
 | `GET /model` | | `{"round", "version", "weights"}` — 이번 라운드 첫 요청이면 중앙 `GET /model` 로 받아 캐시 | 409 `not started`, 502 `central unavailable` / `central version mismatch` (중앙 모델 버전이 엣지와 다름, `central_version` 같이 보냄) |
-| `POST /client_update` | `{"client_id", "version", "weights", "n_samples", "train_loss"}` | `{"ok", "received", "expected", "edge_submitted": bool}` — 담당 클라 전원 제출 시 1차 집계 → 중앙 `POST /edge_update` → 버전 +1 | 409 `not started` / `client not assigned to this edge` / `version mismatch`, 502 `central unavailable` / `central rejected` (`central_status` 같이 보냄) |
+| `POST /client_update` | `{"client_id", "version", "weights", "n_samples", "train_loss"}` | `{"ok", "received", "expected", "edge_submitted": bool}` — 담당 클라 전원 제출 시 1차 집계 → 중앙 `POST /edge_update` → 버전 +1. `deadline_sec` 가 있으면 라운드 첫 `GET /model` 부터 그 시간이 지났을 때 온 클라만으로 1차 집계 | 409 `not started` / `client not assigned to this edge` / `version mismatch` / `deadline passed` (제한 시간에 걸려 이 클라를 빼고 집계한 라운드의 늦은 제출), 502 `central unavailable` / `central rejected` (`central_status` 같이 보냄) |
 | `GET /status` | | `{"edge", "exp", "version", "clients", "received"}` | |
 
 ## 모니터링 (`dashboard/app.py`, 기본 :5050)
@@ -45,3 +45,8 @@ runner → S   GET  /status           (버전이 r+1 인지 확인)
 ```
 
 요청 하나마다 보낸 쪽이 `logs/<exp>/comm.jsonl` 에 한 줄 기록 (`hfl/comm.py` 의 `call`).
+
+**지연·중단 주입 실험** (`run_all --fault`, 설정 `fault`, 심화): `fault.round` 라운드에
+- `drop_client` 는 학습만 하고 `POST /client_update` 를 보내지 않음
+- `delay_client` 는 다른 클라를 다 처리한 뒤, 모델을 받은 때부터 `delay_sec` 가 지나서 제출 (`kind: injected`)
+- 엣지는 `deadline_sec` 가 지나면 온 클라만으로 집계 → 중앙 2차 집계. runner 는 중앙 버전이 r+1 이 될 때까지 기다린 뒤 `GET /status`

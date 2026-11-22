@@ -69,8 +69,10 @@ def check_rest_fedavg(exps):
             assert len(clients) == n_clients and set(edges) == set(a), f"{e['id']} R{r}: 클라 {len(clients)} 엣지 {sorted(edges)}"
             assert all(x["model_version"] == r for x in clients.values()), f"{e['id']} R{r}: 클라 학습 시작 버전 ≠ {r}"
             assert glob["model_version"] == r + 1, f"{e['id']} R{r}: 집계 결과 버전 {glob['model_version']}"
-            for ed, rec in edges.items():  # 1차 집계 가중치 = 담당 클라 표본 수
-                assert sorted(rec["clients"]) == sorted(a[ed]) and rec["n_samples"] == sum(clients[c]["n"] for c in a[ed]), f"{e['id']} R{r} {ed}: 표본 수"
+            # 11/22 B(윤효연) 수정: 지연·중단 실험(심화 6.B, run_all --fault)은 제출 못 한 클라(participated false)를 빼고 엣지가 집계함
+            for ed, rec in edges.items():  # 1차 집계 가중치 = 담당 클라 표본 수 (지연·중단 실험은 제출 못 한 클라 빼고)
+                joined = [c for c in a[ed] if clients[c]["participated"]]
+                assert sorted(rec["clients"]) == sorted(joined) and rec["n_samples"] == sum(clients[c]["n"] for c in joined), f"{e['id']} R{r} {ed}: 표본 수"
             assert glob["edge_n"] == {ed: edges[ed]["n_samples"] for ed in edges}, f"{e['id']} R{r}: 중앙 2차 집계 가중치 ≠ 엣지 표본 수"
             apis = {(x["src"][0], x["api"]) for x in cm}
             need = {("C", "GET /model"), ("C", "POST /client_update"), ("E", "GET /model"), ("E", "POST /edge_update")}
@@ -86,7 +88,8 @@ def check_rest_fedavg(exps):
 
 def check_compare(exps):
     """4. 선호 기반 배정 vs 무작위 배정 비교 (같은 조건)"""
-    by = {e["config"]["assign_method"]: e for e in exps if not e["config"].get("inject")}
+    # 11/22 B(윤효연) 수정: fault_on 실험도 뺌 (안 빼면 선호 자리에 exp_pref_seed42_fault 가 들어감)
+    by = {e["config"]["assign_method"]: e for e in exps if not e["config"].get("inject") and not e["config"].get("fault_on")}
     assert {"pref", "random"} <= set(by), f"실험 배정 방식: {sorted(by)}"
     keys = ("seed", "rounds", "local_epochs", "lr", "batch_size", "samples_per_client", "client_digits")
     assert all(by["pref"]["config"][k] == by["random"]["config"][k] for k in keys), "두 실험 학습 조건이 다름"

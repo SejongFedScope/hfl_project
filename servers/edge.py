@@ -1,6 +1,8 @@
 """엣지 서버 — 담당 B(윤효연), WBS 3.4.2
 
 담당 클라 3명의 모델을 받아 1차 집계 → 중앙에 제출 → 버전 +1.
+/start 에 deadline_sec 가 오면 (심화 6.B 지연·중단 처리) 라운드 첫 GET /model 부터 그 시간까지만 기다리고,
+안 온 클라를 빼고 온 클라만으로 집계. 없으면 지금처럼 담당 클라 전원을 기다림.
 실행: python -m servers.edge --id E1 (--port 생략 시 설정 파일 edge_urls 의 포트). 요청·응답 형식은 docs/api.md.
 """
 import argparse
@@ -24,6 +26,9 @@ state = {
     "version": 0,       # 지금 받는 라운드의 모델 버전
     "model": None,      # 이번 라운드 공동 모델 (중앙에서 받은 숫자 리스트. 담당 클라 모두에게 같은 것)
     "received": {},     # 이번 라운드에 받은 클라 모델 {"C1": (모델, 표본 수)}
+    "deadline_sec": None,  # 대기 시간 제한 (None = 제한 없음, 전원 대기)
+    "timer": None,         # 이번 라운드 제한 시간 타이머
+    "missed": None,        # 제한 시간에 걸린 지난 라운드 {"version", "clients"} → 늦은 제출에 "deadline passed"
 }
 
 
@@ -41,10 +46,13 @@ def _log_path(name):
 
 @app.post("/start")
 def start():
-    """{"exp_id", "clients"} → 담당 클라 저장, 버전 1"""
+    """{"exp_id", "clients", "deadline_sec"(선택)} → 담당 클라 저장, 버전 1"""
     body = request.get_json()
     with lock:
-        state.update(exp=body["exp_id"], clients=list(body["clients"]), version=1, model=None, received={})
+        if state["timer"]:
+            state["timer"].cancel()  # 지난 실험 타이머가 새 실험에 끼어들지 않게
+        state.update(exp=body["exp_id"], clients=list(body["clients"]), version=1, model=None, received={},
+                     deadline_sec=body.get("deadline_sec"), timer=None, missed=None)
         return jsonify(ok=True, edge=_edge_id(), clients=state["clients"])
 
 
@@ -66,6 +74,10 @@ def get_model():
             if got["version"] != v:  # 중앙이 다른 라운드 모델을 주면 받지 않음
                 return _reject("central version mismatch", 502, central_version=got["version"])
             state["model"] = got["weights"]
+            if state["deadline_sec"]:  # 모델을 나눠 주기 시작한 때부터 시간을 잼
+                state["timer"] = threading.Timer(state["deadline_sec"], _on_deadline, args=(state["exp"], v))
+                state["timer"].daemon = True
+                state["timer"].start()
         return jsonify(round=v, version=v, weights=state["model"])
 
 
@@ -80,7 +92,7 @@ def status():
 @app.post("/client_update")
 def client_update():
     """{"client_id", "version", "weights", "n_samples", "train_loss"}
-    409: 배정 안 된 클라 / 버전 불일치
+    409: 배정 안 된 클라 / 버전 불일치 / 대기 시간 제한이 지난 뒤 늦게 온 제출 (deadline passed)
     담당 클라 다 모이면 weighted_average(클라 표본 수) → 중앙 POST /edge_update → train.jsonl (target 엣지 ID) → 버전 +1
     """
     body = request.get_json()
@@ -89,6 +101,9 @@ def client_update():
             return _reject("not started")
         if body["client_id"] not in state["clients"]:
             return _reject("client not assigned to this edge")
+        missed = state["missed"]
+        if missed and body["version"] == missed["version"] and body["client_id"] in missed["clients"]:
+            return _reject("deadline passed")  # 이 클라를 빼고 이미 집계함
         if body["version"] != state["version"]:
             return _reject("version mismatch")
 
@@ -98,30 +113,55 @@ def client_update():
         if received < expected:
             return jsonify(ok=True, received=received, expected=expected, edge_submitted=False)
 
-        # 담당 클라 전원 제출 → 1차 집계 (클라 순서 고정) → 중앙 제출
-        v, clients = state["version"], state["clients"]
-        ns = [state["received"][c][1] for c in clients]
-        edge_w = weighted_average([state["received"][c][0] for c in clients], ns)
-        resp = call("POST", cfg["central_url"], "/edge_update", _edge_id(), "S", _log_path("comm.jsonl"),
-                    state["exp"], v, v, timeout=cfg["request_timeout_sec"],
-                    body={"edge_id": _edge_id(), "version": v, "weights": to_wire(edge_w), "n_samples": sum(ns)})
-        if resp is None:
-            return _reject("central unavailable", 502)
-        if resp.status_code != 200:
-            return _reject("central rejected", 502, central_status=resp.status_code)
-
-        append_jsonl(_log_path("train.jsonl"), {
-            "exp": state["exp"],
-            "round": v,
-            "model_version": v,  # 이 엣지가 받은 모델 = 클라가 학습을 시작한 버전
-            "target": _edge_id(),
-            "clients": clients,
-            "client_n": dict(zip(clients, ns)),
-            "n_samples": sum(ns),
-            "kind": "measured",
-        })
-        state.update(version=v + 1, model=None, received={})
+        # 담당 클라 전원 제출 → 1차 집계 → 중앙 제출
+        if state["timer"]:
+            state["timer"].cancel()
+        err = _submit()
+        if err:
+            return _reject(*err[:2], **err[2])
         return jsonify(ok=True, received=received, expected=expected, edge_submitted=True)
+
+
+def _on_deadline(exp, v):
+    """대기 시간 제한 타이머 (별도 스레드). 그 라운드가 아직 안 끝났으면 온 클라만으로 집계
+    아무도 안 왔으면 집계할 모델이 없어 그대로 둠 (runner 가 중앙 버전 대기에서 시간 초과로 멈춤)
+    """
+    with lock:
+        if state["exp"] != exp or state["version"] != v or not state["received"]:
+            return  # 이미 전원 모여서 집계함 / 다른 실험이 시작됨
+        missing = [c for c in state["clients"] if c not in state["received"]]
+        if _submit() is None:  # 실패해도 응답할 곳이 없음 → 요청 결과는 comm.jsonl 에 남음
+            state["missed"] = {"version": v, "clients": missing}
+
+
+def _submit():
+    """받은 클라 모델을 클라 표본 수로 가중 평균 → 중앙 POST /edge_update → train.jsonl → 버전 +1
+    lock 안에서만 부름. 클라 순서는 담당 목록 순서로 고정 (실행마다 같은 결과). 성공이면 None, 실패면 (오류, 코드, 추가 필드)
+    """
+    v = state["version"]
+    clients = [c for c in state["clients"] if c in state["received"]]  # 제한 시간에 걸리면 온 클라만
+    ns = [state["received"][c][1] for c in clients]
+    edge_w = weighted_average([state["received"][c][0] for c in clients], ns)
+    resp = call("POST", cfg["central_url"], "/edge_update", _edge_id(), "S", _log_path("comm.jsonl"),
+                state["exp"], v, v, timeout=cfg["request_timeout_sec"],
+                body={"edge_id": _edge_id(), "version": v, "weights": to_wire(edge_w), "n_samples": sum(ns)})
+    if resp is None:
+        return ("central unavailable", 502, {})
+    if resp.status_code != 200:
+        return ("central rejected", 502, {"central_status": resp.status_code})
+
+    append_jsonl(_log_path("train.jsonl"), {
+        "exp": state["exp"],
+        "round": v,
+        "model_version": v,  # 이 엣지가 받은 모델 = 클라가 학습을 시작한 버전
+        "target": _edge_id(),
+        "clients": clients,  # 실제로 집계에 들어간 클라 (제한 시간에 걸리면 담당 클라보다 적음)
+        "client_n": dict(zip(clients, ns)),
+        "n_samples": sum(ns),
+        "kind": "measured",
+    })
+    state.update(version=v + 1, model=None, received={}, timer=None)
+    return None
 
 
 if __name__ == "__main__":

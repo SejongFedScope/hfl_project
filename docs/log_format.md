@@ -1,11 +1,11 @@
 # 로그 형식 설명서 (담당 B · ★약속 문서 — 3명 합의 없이 변경 금지)
 
-실험 1개 = `logs/<exp_id>/` 폴더 1개, 파일 5개. `exp_id` = `exp_<배정방식>_seed<시드>[_inject]`.
+실험 1개 = `logs/<exp_id>/` 폴더 1개, 파일 5개. `exp_id` = `exp_<배정방식>_seed<시드>[_inject][_fault]`.
 정확도는 0~1, 시간·지연은 ms.
 
 ## config.json — 설정 (`kind: config`)
 
-`configs/default.json` 전체 + `exp_id`, `algorithm`(fedavg), `assign_method`(pref / random), `inject`(bool).
+`configs/default.json` 전체 + `exp_id`, `algorithm`(fedavg), `assign_method`(pref / random), `inject`(bool), `fault_on`(bool, 지연·중단 주입 실험인지).
 
 ## split.json — 데이터 분할
 
@@ -36,6 +36,11 @@
 | `round` | runner | round, model_version(집계 결과 버전), duration_ms (라운드 시작~중앙 집계 확인) |
 
 모든 줄에 `exp`, `kind`(measured) 포함. 평가 대상 모델(`target`)과 평가 데이터(`eval_data`)를 같이 기록.
+
+**지연·중단 주입 실험 (`_fault`, 심화)**: 새 필드는 없고 값만 이렇게 남는다.
+- 제출 못 한 클라 (중단 클라, 엣지 대기 시간 제한이 지나서 온 지연 클라): `participated: false`. 학습·평가는 했으므로 나머지 값은 그대로 있음
+- 엣지 줄 `clients`·`client_n`·`n_samples`: 실제로 집계에 들어간 클라만 (담당 클라보다 적을 수 있음)
+- 지연 클라의 늦은 `POST /client_update`: comm.jsonl 에 `kind: injected`, 제한 시간이 지났으면 `status: 409`. 중단 클라는 제출 요청 자체가 없음
 
 ## comm.jsonl — 통신 (요청 1건 = 1줄)
 

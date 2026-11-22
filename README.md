@@ -58,6 +58,7 @@ python -m tests.test_dashboard     # 로그 API 엣지 케이스 · 보고서 �
 python -m tests.test_ui            # 화면 클릭·키보드 동작 (playwright 있을 때만, 없으면 SKIP)
 python -m scripts.run_all          # 서버 3개 + 실험 3개 (pref, random, pref+결함 주입) → logs/
 python -m scripts.run_all --methods pref,random [--inject]   # 고른 배정 방식만
+python -m scripts.run_all --fault  # 심화: 클라 지연·중단 주입 + 엣지 대기 시간 제한 (설정 fault) → exp_pref_seed42_fault
 python -m scripts.make_report      # logs/ → docs/report.md 표 + docs/img/ 그래프
 python -m tests.test_requirements  # 명세 필수 6항목 O/X (run_all 다음에)
 python -m dashboard.app            # http://127.0.0.1:5050  ('실험 실행' 탭에서 설정 바꿔 실행 → logs/run-<시각>/)
@@ -76,7 +77,7 @@ python -m dashboard.app --sample   # 실제 로그 대신 dashboard/sample_logs/
 python -m servers.central --port 5003
 python -m servers.edge --id E1 --port 5001
 python -m servers.edge --id E2 --port 5002
-python -m runner.client_runner --method pref        # random, 또는 --inject
+python -m runner.client_runner --method pref        # random, 또는 --inject, --fault
 ```
 
 - 주소는 `localhost` 말고 `127.0.0.1` (Windows 에서 localhost 는 요청마다 약 2초 지연)

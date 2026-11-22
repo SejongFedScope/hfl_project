@@ -4,6 +4,7 @@
   pref / random / pref + 결함 주입
 끝나면 서버 종료. 실행: python -m scripts.run_all
       python -m scripts.run_all --methods pref,random [--inject] → 고른 배정 방식만 (화면 '실험 실행' 탭이 씀)
+      python -m scripts.run_all --fault → 지연·중단 주입 실험 (심화 6.B, 기본 pref. --methods 와 같이 쓸 수 있음)
 서버 출력(요청 로그·오류)은 logs/servers.log
 """
 import argparse
@@ -61,7 +62,7 @@ def main(experiments=EXPERIMENTS):
                 _wait(proc, url)
             print("서버 3개 준비 완료:", ", ".join(url for _, url in servers))
 
-            done = [run(method, inject) for method, inject in experiments]
+            done = [run(*x) for x in experiments]  # (배정 방식, 결함 주입[, 지연·중단 주입])
             print(f"완료 ({log_root}):", ", ".join(done))
         finally:
             for p in procs:  # 실험이 중간에 실패해도 서버는 꼭 끔
@@ -74,11 +75,14 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--methods", help="쉼표로 구분한 배정 방식 (pref,random). 생략하면 기본 실험 3개")
     ap.add_argument("--inject", action="store_true", help="--methods 와 함께: 결함 주입을 켜고 실행")
+    ap.add_argument("--fault", action="store_true", help="지연·중단 주입 실험 (설정 fault). --methods 없으면 pref 하나")
     a = ap.parse_args()
-    if not a.methods:
+    if a.fault and not a.methods:
+        main([("pref", a.inject, True)])
+    elif not a.methods:
         main()
     else:
         methods = a.methods.split(",")
         if not methods or any(m not in ("pref", "random") for m in methods):
             ap.error("--methods 는 pref, random 중에서 (예: pref,random)")
-        main([(m, a.inject) for m in methods])
+        main([(m, a.inject, a.fault) for m in methods])
