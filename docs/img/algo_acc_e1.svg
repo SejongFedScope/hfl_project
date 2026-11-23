@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="280" viewBox="0 0 640 280" font-family="Pretendard, Malgun Gothic, sans-serif">
+<rect width="640" height="280" fill="#ffffff"/>
+<text x="56" y="20" font-size="14" font-weight="700" fill="#1b1f24">라운드별 공동 정확도 (로컬 epoch 1, 시드 42)</text>
+<line x1="56" x2="490" y1="240.0" y2="240.0" stroke="#e9ecef"/>
+<text x="50" y="244.0" font-size="11" text-anchor="end" fill="#4b5563">70%</text>
+<line x1="56" x2="490" y1="172.0" y2="172.0" stroke="#e9ecef"/>
+<text x="50" y="176.0" font-size="11" text-anchor="end" fill="#4b5563">80%</text>
+<line x1="56" x2="490" y1="104.0" y2="104.0" stroke="#e9ecef"/>
+<text x="50" y="108.0" font-size="11" text-anchor="end" fill="#4b5563">90%</text>
+<line x1="56" x2="490" y1="36.0" y2="36.0" stroke="#e9ecef"/>
+<text x="50" y="40.0" font-size="11" text-anchor="end" fill="#4b5563">100%</text>
+<text x="56.0" y="258" font-size="11" text-anchor="middle" fill="#4b5563">R1</text>
+<text x="147.4" y="258" font-size="11" text-anchor="middle" fill="#4b5563">R5</text>
+<text x="261.6" y="258" font-size="11" text-anchor="middle" fill="#4b5563">R10</text>
+<text x="375.8" y="258" font-size="11" text-anchor="middle" fill="#4b5563">R15</text>
+<text x="490.0" y="258" font-size="11" text-anchor="middle" fill="#4b5563">R20</text>
+<polyline points="56.0,195.9 78.8,173.7 101.7,165.3 124.5,155.1 147.4,148.7 170.2,145.3 193.1,141.4 215.9,137.3 238.7,134.9 261.6,132.6 284.4,131.0 307.3,129.7 330.1,128.3 352.9,127.5 375.8,125.8 398.6,124.5 421.5,123.9 444.3,122.2 467.2,122.2 490.0,120.2" fill="none" stroke="#1b1f24" stroke-width="2"/>
+<line x1="502" x2="522" y1="44" y2="44" stroke="#1b1f24" stroke-width="2"/>
+<text x="528" y="48" font-size="11" fill="#1b1f24">FedAvg 87.62%</text>
+<polyline points="56.0,196.1 78.8,174.0 101.7,166.2 124.5,155.3 147.4,149.4 170.2,145.9 193.1,142.0 215.9,137.6 238.7,135.3 261.6,133.1 284.4,131.1 307.3,130.1 330.1,128.4 352.9,127.8 375.8,125.9 398.6,124.8 421.5,124.1 444.3,122.6 467.2,122.4 490.0,120.3" fill="none" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6 4"/>
+<line x1="502" x2="522" y1="62" y2="62" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="528" y="66" font-size="11" fill="#1b1f24">Prox μ=0.01 87.60%</text>
+<polyline points="56.0,201.0 78.8,179.3 101.7,172.1 124.5,158.8 147.4,151.9 170.2,148.6 193.1,144.4 215.9,141.3 238.7,138.3 261.6,136.2 284.4,133.6 307.3,132.6 330.1,131.3 352.9,130.5 375.8,128.6 398.6,127.2 421.5,126.4 444.3,125.1 467.2,124.9 490.0,122.7" fill="none" stroke="#1baf7a" stroke-width="2" stroke-dasharray="6 4"/>
+<line x1="502" x2="522" y1="80" y2="80" stroke="#1baf7a" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="528" y="84" font-size="11" fill="#1b1f24">Prox μ=0.1 87.25%</text>
+<polyline points="56.0,234.8 78.8,218.2 101.7,202.0 124.5,184.3 147.4,165.2 170.2,165.4 193.1,157.7 215.9,155.6 238.7,149.7 261.6,145.4 284.4,141.3 307.3,140.3 330.1,139.0 352.9,139.0 375.8,138.0 398.6,135.6 421.5,135.1 444.3,131.5 467.2,130.9 490.0,131.5" fill="none" stroke="#d6502a" stroke-width="2" stroke-dasharray="2 3"/>
+<line x1="502" x2="522" y1="98" y2="98" stroke="#d6502a" stroke-width="2" stroke-dasharray="2 3"/>
+<text x="528" y="102" font-size="11" fill="#1b1f24">Prox μ=1 85.95%</text>
+</svg>
