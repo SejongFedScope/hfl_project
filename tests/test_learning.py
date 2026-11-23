@@ -8,7 +8,7 @@ import sys
 
 import numpy as np
 
-from hfl.aggregate import weighted_average
+from hfl.aggregate import q_fedavg, weighted_average
 from hfl.common import exp_dir, load_config, write_json
 from hfl.data_split import load_mnist, make_split, split_summary
 from hfl.model import N_PARAMS, evaluate, init_weights, train_local
@@ -130,6 +130,30 @@ def test_fedprox():
     assert np.array_equal(w0, before)
 
 
+def test_qfedavg():
+    """[심화 6.A] q=0 → 단순 평균(같은 표본 수면 FedAvg) / 손계산 예제 / q 클수록 손실 큰 클라 쪽으로 / 입력 안 바뀜"""
+    rng = np.random.default_rng(3)
+    wg = rng.normal(size=N_PARAMS)
+    ws = [wg + rng.normal(scale=0.1, size=N_PARAMS) for _ in range(6)]
+    losses = [0.2, 0.3, 0.5, 0.8, 1.0, 1.5]
+    before = [w.copy() for w in ws]
+    assert np.allclose(q_fedavg(wg, ws, losses, q=0, lr=0.1), weighted_average(ws, [1200] * 6))
+    # 손계산: w_global = [0, 0], 클라 2개 (lr = 1)
+    #   C1: w = [1, 0], F = 1  → Δw = [-1, 0], q=1: Δ = [-1, 0], h = 1·1·1 + 1 = 2
+    #   C2: w = [0, 2], F = 3  → Δw = [0, -2], q=1: Δ = [0, -6], h = 1·1·4 + 3 = 7
+    #   new = [0, 0] − ([-1, -6] / 9) = [1/9, 2/3]
+    got = q_fedavg(np.zeros(2), [np.array([1.0, 0.0]), np.array([0.0, 2.0])], [1.0, 3.0], q=1, lr=1.0)
+    assert np.allclose(got, [1 / 9, 2 / 3], atol=1e-8)
+    # q 가 클수록 손실이 가장 큰 클라(C6) 모델 쪽으로 더 다가감 (방향 비중)
+    share = []
+    for q in (0, 1, 5):
+        new = q_fedavg(wg, ws, losses, q=q, lr=0.1)
+        d = new - wg
+        share.append(float(d @ (ws[5] - wg)) / (np.linalg.norm(d) * np.linalg.norm(ws[5] - wg)))
+    assert share[0] < share[1] < share[2]
+    assert all(np.array_equal(a, b) for a, b in zip(ws, before))
+
+
 SIM_ASSIGN = {"E1": ["C1", "C2", "C3"], "E2": ["C4", "C5", "C6"]}  # 임의 예시 (배정과 무관함을 보이는 것이 목적)
 
 
@@ -172,7 +196,7 @@ if __name__ == "__main__":
         rest = [a for a in sys.argv[1:] if a != "--sim"]
         run_simulation(int(rest[0]) if rest else 5)
         sys.exit(0)
-    for t in (test_two_stage_hand_example, test_two_stage_equals_flat, test_split_no_overlap, test_model_basic, test_fedprox):
+    for t in (test_two_stage_hand_example, test_two_stage_equals_flat, test_split_no_overlap, test_model_basic, test_fedprox, test_qfedavg):
         try:
             t()
             print("PASS", t.__name__)

@@ -36,3 +36,37 @@ def weighted_average(list_of_weights, list_of_n):
 
     averaged_soln = base / total_weight                # 원본: [v / total_weight for v in base]
     return averaged_soln
+
+def q_fedavg(w_global, list_of_weights, list_of_loss, q, lr):
+    """[심화 6.A] q-FedAvg 중앙 집계 (공정성: 손실이 큰 클라를 더 크게 반영)
+
+    w_global: 라운드 시작 공동 모델, list_of_weights: 클라 학습 후 모델 k개,
+    list_of_loss: 각 클라의 학습 전 손실 F (공동 모델을 자기 학습 데이터로 평가), q: 공정성 세기, lr: 로컬 학습률
+    → 새 공동 모델 (길이 7,850 배열)
+
+    출처: litian96/fair_flearn (MIT License, commit f097971)
+          flearn/trainers/qffedavg.py  Server.train (Δ, h 계산), flearn/trainers/fedbase.py  aggregate2
+      Δw_k = (w_global − w_k) / lr
+      Δ_k  = (F_k + 1e-10)^q · Δw_k
+      h_k  = q · (F_k + 1e-10)^(q−1) · ‖Δw_k‖² + (F_k + 1e-10)^q / lr
+      new  = w_global − ΣΔ_k / Σh_k
+    q = 0 이면 Δ_k = Δw_k, h_k = 1/lr → new = 클라 모델 단순 평균 (표본 수가 같으면 FedAvg 와 같음)
+    수정 사항: 레이어별 배열 → 7,850개 1차원 배열, 클래스 메서드 → 독립 함수, 입력 검사 추가
+    """
+    if len(list_of_weights) != len(list_of_loss):
+        raise ValueError("list_of_weights와 list_of_loss의 개수가 다릅니다")
+    if len(list_of_weights) == 0:
+        raise ValueError("집계할 모델이 없습니다")
+    if q < 0 or lr <= 0:
+        raise ValueError("q는 0 이상, lr은 양수여야 합니다")
+    w_global = np.asarray(w_global, dtype=np.float64)
+    deltas, hs = [], []
+    for w_k, F in zip(list_of_weights, list_of_loss):
+        w_k = np.asarray(w_k, dtype=np.float64)
+        if w_k.shape != w_global.shape:
+            raise ValueError("모델 길이가 서로 다릅니다")
+        grad = (w_global - w_k) / lr                                   # 원본: (u - v) / learning_rate
+        Fq = np.float_power(F + 1e-10, q)
+        deltas.append(Fq * grad)
+        hs.append(q * np.float_power(F + 1e-10, q - 1) * np.sum(grad ** 2) + Fq / lr)
+    return w_global - np.sum(deltas, axis=0) / np.sum(hs)              # 원본 aggregate2

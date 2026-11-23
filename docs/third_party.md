@@ -146,4 +146,9 @@ python -u main.py --dataset=mnist --optimizer=fedavg --model=mclr --learning_rat
 - q-FedAvg 원본의 F는 **학습 전 공동 모델의 자기 학습 데이터 손실**, 집계는 표본 수 가중치 없이 클라별 Δ·h 합. q = 0이면 Δ = Δw, h = 1/lr → 단순 평균. 우리 클라는 모두 1,200장이라 q = 0일 때 FedAvg와 같아야 함 (이식 검사 기준)
 - 원본은 클라 선택이 무작위(FedProx: 1,000개 중 일부, q-FedAvg: 표본 수 비례) → 우리는 6개 전원 참여
 
-**실행 방식 (팀 확인 중)**: Flask 서버 없이 한 프로세스에서 클라 6 → 중앙 루프를 돌리고, 결과는 `logs/<exp_id>/` 같은 로그 형식으로 저장 (`algorithm` 필드에 fedavg / fedprox / qfedavg). 실행 파일 위치는 팀 확인 후 기록.
+**이식 결과 (11/23)**
+- FedProx: `hfl/model.py` `train_local` 의 `mu` 옵션 (수정 사항 7번). 원본 낙오 클라 처리·gradient 차이 출력은 이식하지 않음
+- q-FedAvg: `hfl/aggregate.py` `q_fedavg` (원본 Δ·h 계산 + `aggregate2`). 학습 전 손실 F 는 `scripts/compare_algorithms.py` 에서 `evaluate`로 계산. 레이어별 배열 → 7,850개 1차원 배열, 클래스 메서드 → 독립 함수, 입력 검사 추가 외에는 원본과 같음
+- 원본과 다르게 쓴 것: 보폭 진단 옵션 `--q-lscale`(기본 1 = 원본). 1이 아니면 L 을 원본의 1/배수로 바꿈 → 진단 1회에만 사용, 결과 표·결론에는 원본 규칙(1)만 사용 (`docs/algorithm_comparison.md` 6절)
+
+**실행 방식 (팀 확인 완료)**: Flask 서버 없이 한 프로세스에서 클라 6 → 중앙 루프를 돌리고, 결과는 `logs/<exp_id>/` 같은 로그 형식으로 저장 (`algorithm` 필드에 fedavg / fedprox / qfedavg). 실행 파일: `scripts/compare_algorithms.py` (A 담당, 팀 확인 11/23). 결과 문서: `docs/algorithm_comparison.md` (위치는 팀 확인 후 변경 가능).
