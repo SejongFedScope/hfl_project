@@ -112,6 +112,24 @@ def test_model_basic():
     assert len(by_digit) == 10 and all(0.0 <= a <= 1.0 for a in by_digit)
 
 
+def test_fedprox():
+    """[심화 6.A] μ=0 → FedAvg 와 비트 단위 동일 / μ>0 → 공동 모델에서 덜 벗어남 / 입력 w 안 바뀜"""
+    cfg = dict(load_config(), local_epochs=5)
+    x, y = _toy_data()
+    w0, _ = train_local(init_weights(), x, y, cfg, seed=1)     # 0 이 아닌 시작 모델 (공동 모델 역할)
+    before = w0.copy()
+    x2, y2 = x[y < 3], y[y < 3]                                 # 숫자 0~2 만 가진 클라 (non-IID)
+    w_avg, l_avg = train_local(w0, x2, y2, cfg, seed=2)
+    w_mu0, l_mu0 = train_local(w0, x2, y2, dict(cfg, mu=0.0), seed=2)
+    assert np.array_equal(w_avg, w_mu0) and l_avg == l_mu0     # μ=0 = FedAvg
+    dist = [np.linalg.norm(w_avg - w0)]
+    for mu in (0.1, 1.0, 10.0):
+        w_mu, _ = train_local(w0, x2, y2, dict(cfg, mu=mu), seed=2)
+        dist.append(np.linalg.norm(w_mu - w0))
+    assert all(a > b for a, b in zip(dist, dist[1:]))           # μ 클수록 w_global 에 가까움
+    assert np.array_equal(w0, before)
+
+
 SIM_ASSIGN = {"E1": ["C1", "C2", "C3"], "E2": ["C4", "C5", "C6"]}  # 임의 예시 (배정과 무관함을 보이는 것이 목적)
 
 
@@ -154,7 +172,7 @@ if __name__ == "__main__":
         rest = [a for a in sys.argv[1:] if a != "--sim"]
         run_simulation(int(rest[0]) if rest else 5)
         sys.exit(0)
-    for t in (test_two_stage_hand_example, test_two_stage_equals_flat, test_split_no_overlap, test_model_basic):
+    for t in (test_two_stage_hand_example, test_two_stage_equals_flat, test_split_no_overlap, test_model_basic, test_fedprox):
         try:
             t()
             print("PASS", t.__name__)

@@ -3,13 +3,18 @@
 공개 FedProx 저장소(litian96/FedProx) MNIST 기본 모델 mclr = 소프트맥스 회귀 (784 → 10).
 파라미터 = 숫자 7,850개 1차원 배열: W(784×10)를 행 순서로 편 뒤 b(10)를 붙임 (docs/api.md 전송 형식과 같음).
 
-[출처] flearn/models/mnist/mclr.py (init, solve_inner, test), flearn/utils/model_utils.py (batch_data)
+[출처] flearn/models/mnist/mclr.py (init, solve_inner, test), flearn/utils/model_utils.py (batch_data),
+       flearn/optimizer/pgd.py (FedProx 근접항, 심화 6.A)
        https://github.com/litian96/FedProx  commit d2a4501f319f1594b732d88315c5ca1a72855f50  (MIT)
 [수정] 1. TensorFlow 1.x → NumPy 이식 (Python 3.11, 팀 결정 D2·D3)
        2. 모델을 레이어별 배열 대신 7,850개 1차원 배열로 표현 (docs/api.md)
        3. 원본은 L2 정규화를 선언만 하고 손실에 더하지 않음 → 이식본도 정규화 없음 (실제 동작과 같음)
        4. 배치 섞기: 원본은 매번 seed 100 고정 → 호출자가 넘기는 seed 사용 (명세 "시드를 설정 파일로 관리")
        5. 원본 test 는 정답 수·손실 합 → 정확도(0~1)·평균 손실·숫자별 정확도로 반환
+       6. 초기 모델 선택 init_model (zeros / normal) — 김영헌 추가 (11/19), 기본 zeros 는 원본 이식과 같음
+       7. [심화 6.A] FedProx: 원본 pgd.py 의 갱신 w ← w − lr·(∇F(w) + μ·(w − w_global)) 를 train_local 에 이식.
+          w_global = 라운드 시작 모델(= 입력 w, 원본 vstar). μ 는 cfg["mu"] (없으면 0 = FedAvg, 결과 비트 단위 동일).
+          원본처럼 W·b 모든 파라미터에 적용
 """
 import numpy as np
 
@@ -56,12 +61,13 @@ def train_local(w, x, y, cfg, seed):
     """로컬 학습 (미니배치 SGD).
 
     w: 시작 모델 (7,850,), x: (n, 784), y: (n,)
-    cfg: local_epochs, lr, batch_size 사용
+    cfg: local_epochs, lr, batch_size 사용. cfg["mu"] 가 있으면 FedProx 근접항 (심화 6.A, 기본 0 = FedAvg)
     seed: 배치 순서 고정 (같은 seed → 같은 결과)
     → (new_w, train_loss)  new_w 는 w 를 건드리지 않은 새 배열, train_loss 는 학습 후 (x, y) cross-entropy
     """
-    W, b = _unpack(w)
-    W, b = W.copy(), b.copy()                       # 입력 w 는 건드리지 않음
+    W0, b0 = _unpack(w)                             # 라운드 시작 모델 (FedProx 의 w_global)
+    W, b = W0.copy(), b0.copy()                     # 입력 w 는 건드리지 않음
+    mu = float(cfg.get("mu", 0.0))
     y = np.asarray(y, dtype=np.int64)
     n = len(y)
     lr, bs = float(cfg["lr"]), int(cfg["batch_size"])
@@ -74,8 +80,12 @@ def train_local(w, x, y, cfg, seed):
             g = _softmax(xb @ W + b)                # (m, 10)
             g[np.arange(len(yb)), yb] -= 1.0        # dL/dz = p - onehot
             g /= len(yb)
-            W -= lr * (xb.T @ g)
-            b -= lr * g.sum(axis=0)
+            gW, gb = xb.T @ g, g.sum(axis=0)
+            if mu:                                  # FedProx 근접항 μ·(w − w_global)
+                gW = gW + mu * (W - W0)
+                gb = gb + mu * (b - b0)
+            W -= lr * gW
+            b -= lr * gb
     train_loss = _loss(_softmax(x @ W + b), y)
     return _pack(W, b), train_loss
 
