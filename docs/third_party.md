@@ -128,6 +128,22 @@ python -u main.py --dataset=mnist --optimizer=fedavg --model=mclr --learning_rat
 
 **서버 · runner 실험** (11/18, 윤효연 실행, 20라운드) — 결과는 `docs/report.md` 4절. 선호·무작위 배정 모두 공동 정확도 87.62%, 손실 0.4757.
 
-### 심화 (11/20~11/26, 계획)
+### 심화 6.A 알고리즘 비교 (11/23~, 이건)
 
-FedProx 비교를 하게 되면 같은 저장소(MIT)의 `flearn/trainers/fedprox.py`와 `flearn/optimizer/pgd.py`(근접항)를 참고. 확정되면 사용한 파일, commit, 수정 사항을 위 표와 같은 방식으로 추가.
+명세 심화 목표: "동일한 단일 중앙 집계 구조에서 FedAvg·FedProx를 비교하고, 여력이 있으면 q-FedAvg를 추가". 단일 중앙 집계 구조 = 명세의 "기존 중앙 집계 구조"(엣지 단계를 추가하기 전, 중앙 하나가 클라를 바로 집계). 분할·시드·초기 모델·학습 설정은 필수 실험과 같게 둔다.
+
+**사용할 공개 코드 (11/23 확인)**
+
+| 알고리즘 | 원본 | 핵심 동작 | 이식할 곳 |
+|---|---|---|---|
+| FedAvg | litian96/FedProx `flearn/trainers/fedavg.py` (commit d2a4501, MIT) | 이미 이식 (`model.py`, `aggregate.py`) | — |
+| FedProx | 같은 저장소 `flearn/trainers/fedprox.py`, `flearn/optimizer/pgd.py` | 로컬 SGD 갱신 `w ← w − lr·(∇F(w) + μ·(w − w_global))` (`vstar` = 라운드 시작 공동 모델). 집계는 FedAvg와 같음 | `model.py` `train_local`에 `mu` 옵션 (기본 0 = FedAvg) |
+| q-FedAvg (q-FFL) | litian96/fair_flearn `flearn/trainers/qffedavg.py`, `flearn/trainers/fedbase.py` `aggregate2` (commit f09797113147b5ae66eb0348e93f575d5d63baed, MIT) | 클라: 학습 전 손실 F, Δw = (w_global − w_local)/lr, Δ = F^q·Δw, h = q·F^(q−1)·‖Δw‖² + F^q/lr. 중앙: w ← w_global − ΣΔ / Σh | `aggregate.py`에 새 함수 |
+
+**원본에서 확인한 세부 사항 (이식 때 처리)**
+- FedProx 원본은 `drop_percent > 0`일 때 낙오 클라에 임의 epoch 수만 학습시킴 → 우리 비교는 모든 클라 참여(명세 기본 조건)라 이 부분은 이식하지 않음
+- FedProx 원본은 라운드마다 클라 간 gradient 차이를 출력만 함 → 결과에 영향 없어 이식하지 않음
+- q-FedAvg 원본의 F는 **학습 전 공동 모델의 자기 학습 데이터 손실**, 집계는 표본 수 가중치 없이 클라별 Δ·h 합. q = 0이면 Δ = Δw, h = 1/lr → 단순 평균. 우리 클라는 모두 1,200장이라 q = 0일 때 FedAvg와 같아야 함 (이식 검사 기준)
+- 원본은 클라 선택이 무작위(FedProx: 1,000개 중 일부, q-FedAvg: 표본 수 비례) → 우리는 6개 전원 참여
+
+**실행 방식 (팀 확인 중)**: Flask 서버 없이 한 프로세스에서 클라 6 → 중앙 루프를 돌리고, 결과는 `logs/<exp_id>/` 같은 로그 형식으로 저장 (`algorithm` 필드에 fedavg / fedprox / qfedavg). 실행 파일 위치는 팀 확인 후 기록.
