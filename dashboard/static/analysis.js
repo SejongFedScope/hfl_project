@@ -81,7 +81,7 @@ function render_traffic(s) {  // 트래픽 sankey: 클라 → 엣지 → 중앙,
       type: "sankey", left: 8, right: 90, top: 12, bottom: 30, nodeWidth: 14, nodeGap: 10, draggable: false, layoutIterations: 0,
       emphasis: {disabled: true},
       data: nsort(names).map(n => ({name: n, itemStyle: {color: color(n), opacity: !L || n === "S" || node_lit(L, n) ? 1 : DIM},
-        label: {formatter: x => `${n === "S" ? "중앙 S" : n}  ${mb(x.value)}`, color: css_var("--text-primary"), fontWeight: 600}})),
+        label: {formatter: x => `${n === "S" ? "중앙 S" : n}  ${mb(x.value)}`, color: css_var("--text-primary"), fontWeight: 600, fontSize: 13}})),
       links: keys.map(k => {
         const [src, dst] = k.split("→");
         return {source: src, target: dst, value: flows[k], lineStyle: {color: color(src), opacity: link_lit(L, src, dst) ? 0.45 : 0.06}};

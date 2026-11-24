@@ -77,8 +77,10 @@ function render_comm_heatmap(s) {  // 4.3.7 ② 링크 × 라운드, 색 = 성�
     animation: false,
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
-    grid: {left: 84, right: 8, top: 20, bottom: 8},
-    visualMap: {show: false, min: 0, max: max_lat, inRange: {color: ["#cde2fb", "#86b6ef", "#3987e5"]}, seriesIndex: 0},
+    grid: {left: 84, right: 56, top: 20, bottom: 8},
+    visualMap: {show: true, min: 0, max: Math.round(max_lat), inRange: {color: ["#cde2fb", "#86b6ef", "#3987e5"]}, seriesIndex: 0,
+      orient: "vertical", right: 0, top: "middle", itemWidth: 10, itemHeight: 90, calculable: false, text: [`${Math.round(max_lat)} ms`, "0 ms"],
+      textStyle: {fontSize: 11, color: css_var("--text-secondary")}},  // 칸 색 = 성공 요청 평균 지연
     xAxis: {
       type: "category", data: rounds.map(r => `R${r}`), position: "top", triggerEvent: true,
       axisLine: {show: false}, axisTick: {show: false},
@@ -91,6 +93,7 @@ function render_comm_heatmap(s) {  // 4.3.7 ② 링크 × 라운드, 색 = 성�
         color: css_var("--text-primary"),
         formatter: v => {
           const [a, c] = v.split("→");
+          if (a === "runner") return `실행기→${c}`;  // runner: 라운드 끝에 중앙 버전을 확인하는 요청
           return a in ce && ce[a] !== c ? `${v} 배정 밖` : v;
         },
       },
@@ -131,7 +134,7 @@ function render_request_table(s) {  // 4.3.8 ② 선택 라운드 요청 목록
     if (!x.ok) tr.classList.add(x.kind === "injected" ? "row_warning" : "row_critical");
     const cells = [
       String(i + 1), `${x.src} → ${x.dst}`, x.api, `v${x.model_version}`,
-      x.ok ? `${Math.round(x.latency_ms)} ms` : `${(x.latency_ms / 1000).toFixed(1)} s`,
+      `${Math.round(x.latency_ms).toLocaleString()} ms`,
       x.ok ? "200" : `${fail_text(x)}${x.kind === "injected" ? " 시험" : ""}`,  // 시험 = 일부러 넣은 요청 (kind injected, 노란 줄)
     ];
     cells.forEach((v, ci) => {

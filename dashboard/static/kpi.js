@@ -5,9 +5,8 @@ function fmt_bytes(b) {
   return Math.round(b / 1e3) + " KB";
 }
 
-function fmt_ms(ms) {
-  if (ms >= 1000) return (ms / 1000).toFixed(1) + " s";
-  return Math.round(ms) + " ms";
+function fmt_ms(ms) {  // 명세 단위 ms 그대로 (1,000 넘어도 s 로 안 바꿈)
+  return Math.round(ms).toLocaleString() + " ms";
 }
 
 function make_el(tag, cls, text) {
@@ -90,7 +89,10 @@ function render_kpi(s) {
   tiles.push(make_tile("평균 지연", fmt_ms(mean), v.ok_lat.length ? `최대 ${fmt_ms(Math.max(...v.ok_lat))} (성공 요청)` : "요청 없음"));
 
   tiles.push(make_tile("라운드 소요 시간", v.dur ? fmt_ms(v.dur.duration_ms) : "–", "시작 ~ 중앙 집계 확인"));
-  tiles.push(make_tile("누적 통신량", fmt_bytes(v.total_bytes), `이번 라운드 ${fmt_bytes(v.round_bytes)} (요청+응답)`));
+  const chk = b.assignment.check;
+  const bad = chk.unassigned.length + chk.duplicated.length + chk.capacity_violation.length;
+  tiles.push(make_tile("배정 상태", chk.mean_pref_rank == null ? "–" : `평균 ${chk.mean_pref_rank.toFixed(2)}위`,
+    `${b.assignment.method === "pref" ? "선호 배정" : "무작위 배정"} · 위반 ${bad} (미배정 ${chk.unassigned.length} · 중복 ${chk.duplicated.length} · 정원 ${chk.capacity_violation.length})`, bad ? "down" : ""));
 
   document.getElementById("kpi").replaceChildren(...tiles);
 }

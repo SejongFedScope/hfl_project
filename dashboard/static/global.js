@@ -14,6 +14,9 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
   const L = lit();
   const g = global_series(b);
   const rounds = g.map((_, i) => `R${i + 1}`);
+  const gc_vals = s.compare_bundle && s.compare_exp !== s.exp  // 비교 실험 공동 정확도 (같은 라운드 수까지)
+    ? global_series(s.compare_bundle).slice(0, g.length).map(x => (x ? x.acc : null)) : [];
+  const gc_line = gc_vals.some(v => v !== null) ? gc_vals : [];  // 비교 실험에 끝난 라운드가 없으면 점선·안내 없음
   const ink = css_var("--text-primary");
   const grid_line = css_var("--hairline");
   const pick = css_var("--pick");
@@ -26,7 +29,8 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
     `숫자별 정확도 % · R${s.round} 최저 = 숫자 ${worst} (${(now.acc_by_digit[worst] * 100).toFixed(1)}%), 보유: ${owners.map(c => `${c}(${ce[c] || "미배정"})`).join(" ")}`;
   const show_num = (chart.getWidth() - 40) / rounds.length >= 26 && (chart.getHeight() * 0.5) / 10 >= 13;
   const all_acc = g.filter(Boolean).flatMap(x => x.acc_by_digit);
-  const acc_floor = all_acc.length ? Math.floor(Math.min(...all_acc) * 10) / 10 : 0;
+  const sorted_acc = [...all_acc].sort((p, q) => p - q);
+  const acc_floor = sorted_acc.length ? Math.floor(sorted_acc[Math.floor(sorted_acc.length * 0.05)] * 20) / 20 : 0;  // 하위 5% 값부터 색을 나눔 → 첫 라운드 몇 칸 때문에 나머지가 다 진해지지 않게
 
   const cells = [];
   g.forEach((x, ri) => {
@@ -61,14 +65,15 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || `${p.seriesName} · ${p.name}: ${p.seriesName === "손실" ? Number(p.value).toFixed(3) : (p.value * 100).toFixed(1) + "%"}`},
     title: [
-      {text: `공동 모델 정확도  ${now ? (now.acc * 100).toFixed(1) + "%" : "–"}`, left: 0, top: 0, textStyle: {fontSize: 13, fontWeight: 600, color: text.color}},  // 값 = 선택 라운드
+      {text: `공동 모델 정확도  ${now ? (now.acc * 100).toFixed(1) + "%" : "–"}` + (gc_line.length ? "  (점선: 비교)" : ""), left: 0, top: 0,
+        textStyle: {fontSize: 13, fontWeight: 600, color: text.color, width: chart.getWidth() * 0.54 - 8, overflow: "truncate"}},  // 값 = 선택 라운드, 손실 제목과 안 겹치게
       {text: `손실  ${now ? now.loss.toFixed(3) : "–"}`, left: "56%", top: 0, textStyle: {fontSize: 13, fontWeight: 600, color: text.color}},
       {text: worst_note, left: 0, top: "36%", textStyle: {fontSize: 13, fontWeight: 600, color: text.color}},
     ],
     grid: [
       {left: 40, right: "48%", top: 22, height: "22%"},  // 정확도·손실은 단위가 달라서 축을 나눠 나란히
       {left: "62%", right: 12, top: 22, height: "22%"},
-      {left: 24, right: 8, top: "43%", bottom: 20},
+      {left: 24, right: 52, top: "43%", bottom: 20},
     ],
     xAxis: [axis_x(0), axis_x(1), {...axis_x(2), position: "bottom"}],
     yAxis: [
@@ -78,12 +83,16 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
       {type: "category", gridIndex: 2, data: [...Array(10).keys()].map(String), inverse: true, axisTick: {show: false}, axisLine: {show: false},
         axisLabel: {color: ink, fontWeight: 700, fontSize: 12, interval: 0}},
     ],
-    visualMap: {show: false, seriesIndex: 2, min: acc_floor, max: 1, inRange: {color: SEQ_BLUE}},  // 실제 값 범위에 맞춰 칸 색 차이가 보이게
+    visualMap: {show: true, seriesIndex: 2, min: acc_floor, max: 1, inRange: {color: SEQ_BLUE}, orient: "vertical", right: 0, bottom: 24,
+      itemWidth: 10, itemHeight: Math.max(40, Math.min(90, chart.getHeight() * 0.5 - 60)), calculable: false, text: ["100%", `${Math.round(acc_floor * 100)}% 이하`],  // 좁은 화면에선 짧게 (손실 그래프와 안 겹치게)
+      textStyle: {fontSize: 11, color: css_var("--text-secondary")}},  // 대부분 값이 몰린 범위에 색 차이 → 낮은 칸이 눈에 띔
     series: [
       {...line("공동 정확도", g.map(x => (x ? x.acc : null)), v => (v * 100).toFixed(1) + "%"), xAxisIndex: 0, yAxisIndex: 0},
       {...line("손실", g.map(x => (x ? x.loss : null)), v => Number(v).toFixed(3)), xAxisIndex: 1, yAxisIndex: 1},
       {type: "heatmap", xAxisIndex: 2, yAxisIndex: 2, data: cells, emphasis: {disabled: true},
         label: {show: show_num, fontSize: 11, formatter: p => Math.round(p.value[2] * 100)}},
+      ...(gc_line.length ? [{type: "line", name: "비교 실험 공동 정확도", data: gc_line, xAxisIndex: 0, yAxisIndex: 0, symbol: "none", silent: true,
+        lineStyle: {width: 1.5, type: "dashed", color: css_var("--text-muted")}}] : []),  // 실험 비교용 점선 (맨 뒤: 히트맵 색 범례가 seriesIndex 2), 지연·중단의 하락 라운드가 보임
     ],
   });
   bind_focus(chart, (p, is_click) => {
@@ -114,22 +123,27 @@ function missing_rounds(b) {  // [[라운드, [빠진 클라...]], ...] — 배�
   return out;
 }
 
-function compare_metrics(b) {
+function edge_tv(b) {  // 엣지 쌍마다 숫자 분포 차이(총변동거리)를 재고 가장 큰 값 (엣지가 3개 이상이어도 됨)
   const comp = b.assignment.edge_composition;
   const es = nsort(Object.keys(comp));
   const dist = e => { const t = comp[e].n || 1; return comp[e].digit_counts.map(n => n / t); };
-  let tv = 0;  // 엣지 쌍마다 숫자 분포 차이(총변동거리)를 재고 가장 큰 값 (엣지가 3개 이상이어도 됨)
+  let tv = 0;
   es.forEach((a, i) => es.slice(i + 1).forEach(c => {
     const p = dist(a), q = dist(c);
     tv = Math.max(tv, 0.5 * p.reduce((acc, v, k) => acc + Math.abs(v - q[k]), 0));
   }));
+  return tv;
+}
+
+function compare_metrics(b) {
+  const comp = b.assignment.edge_composition;
+  const es = nsort(Object.keys(comp));
+  const tv = edge_tv(b);
   const g = global_series(b).filter(Boolean);
   const reqs = b.comm.filter(x => x.round >= 1 && is_measured(x));  // 일부러 넣은 시험 요청은 성공률에서 뺌
   const durs = b.train.filter(x => x.target === "round").map(x => x.duration_ms);
   return [
-    ["배정 방식", b.assignment.method === "pref" ? "선호(matching)" : b.assignment.method === "random" ? "무작위" : b.assignment.method],
     ["평균 선호 순위 (낮을수록 좋음)", b.assignment.check.mean_pref_rank == null ? "–" : b.assignment.check.mean_pref_rank.toFixed(2) + "위"],
-    ["엣지별 숫자 종류", es.map(e => `${e} ${comp[e].digit_counts.filter(n => n > 0).length}`).join(" · ")],
     ["엣지 간 숫자 분포 차이 (0 = 같음)", es.length > 1 ? tv.toFixed(2) : "–"],
     ["마지막 라운드 공동 정확도", g.length ? (g[g.length - 1].acc * 100).toFixed(1) + "%" : "–"],
     ["요청 성공률 (시험 요청 제외)", reqs.length ? ((reqs.filter(x => x.ok).length / reqs.length) * 100).toFixed(1) + "%" : "–"],
@@ -138,7 +152,7 @@ function compare_metrics(b) {
   ];
 }
 
-function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도 곡선 + 배정·구성 지표 표
+function render_assign_compare(s) {  // 4.3.9 ④ 실험 비교: 두 실험의 엣지별 숫자 분포 + 지표 표 + 해석
   const b = s.bundle, c = s.compare_bundle;
   if (!b) return;
   const host = document.getElementById("p_compare");
@@ -163,27 +177,37 @@ function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도
   const n = Math.min(ga.length, gc.length);
   const last_diff = n && ga[n - 1] && gc[n - 1] ? Math.abs(ga[n - 1].acc - gc[n - 1].acc) * 100 : null;
 
+  // 두 실험의 엣지 × 숫자 표본 수를 나란히 (명세: 배정 방식 비교 = 선호 충족도 · 엣지별 숫자 분포 · 학습 성능 · 실행 기록)
+  // 두 실험의 정확도 곡선은 학습 추세 패널에 점선으로 같이 그림 (여기서는 차이 숫자만)
+  const sides = [[b, "이 실험"], [c, "비교 실험"]];
+  const edges_b = nsort(Object.keys(b.assignment.edge_composition)), edges_c = nsort(Object.keys(c.assignment.edge_composition));
+  const max_n = Math.max(1, ...[b, c].flatMap(x => Object.values(x.assignment.edge_composition).flatMap(v => v.digit_counts)));
+  const cells = (x, gi) => nsort(Object.keys(x.assignment.edge_composition)).flatMap((e, yi) =>
+    x.assignment.edge_composition[e].digit_counts.map((v, d) => ({
+      value: [d, yi, v || "-"], tip: `${gi ? "비교" : "이"} 실험 · ${esc(e)} · 숫자 ${d}: ${v.toLocaleString()}장`,
+      label: {color: v / max_n >= 0.5 ? "#ffffff" : "#0b0b0b"},
+    })));
   const text = base_text();
   draw(chart, {
     animation: false,
     textStyle: text,
-    tooltip: {trigger: "axis", valueFormatter: v => (v === null || v === undefined ? "–" : (v * 100).toFixed(1) + "%")},
-    title: {text: max_diff === null ? (done_rounds(c) ? "" : "비교 실험에 끝난 라운드가 없어 곡선 비교 불가")
-      : `공동 정확도 최대 차이 ${max_diff.toFixed(1)}%p` + (max_diff < 0.05 ? " → 라운드마다 공동 정확도가 같음"
-        : ` (R${worst_r})` + (last_diff === null ? "" : ` · R${n} 차이 ${last_diff.toFixed(1)}%p` + (ga.length !== gc.length ? " (두 실험 공통 마지막 라운드)" : ""))),
-      left: 0, top: 0, textStyle: {fontSize: 13, fontWeight: 600, color: ink}},
-    legend: {top: 18, left: 0, itemWidth: 16, itemHeight: 2, textStyle: {fontSize: 12, color: text.color}},
-    grid: {left: 40, right: 12, top: 42, bottom: 18},
-    xAxis: {type: "category", data: [...Array(R).keys()].map(i => `R${i + 1}`), axisTick: {show: false},
-      axisLine: {lineStyle: {color: css_var("--border")}}, axisLabel: {color: ink, fontWeight: 700, interval: R > 12 ? 1 : 0}},
-    yAxis: {type: "value", min: v => Math.max(0, Math.floor(v.min * 10) / 10), max: 1, splitNumber: 2,
-      axisLabel: {formatter: v => Math.round(v * 100) + "%"}, splitLine: {lineStyle: {color: css_var("--hairline")}}},
-    series: [
-      {type: "line", name: label_of(b, "이 실험"), data: ga.map(x => (x ? x.acc : null)), symbol: "circle", symbolSize: 6,
-        lineStyle: {width: 2, color: ink}, itemStyle: {color: ink}},
-      {type: "line", name: label_of(c, "비교 실험"), data: gc.map(x => (x ? x.acc : null)), symbol: "emptyCircle", symbolSize: 8,
-        lineStyle: {width: 2, type: "dashed", color: muted}, itemStyle: {color: muted}},
+    tooltip: {trigger: "item", formatter: p => (p.data && p.data.tip) || ""},
+    title: [
+      {text: max_diff === null ? (done_rounds(c) ? "" : "비교 실험에 끝난 라운드가 없음")
+        : `공동 정확도 최대 차이 ${max_diff.toFixed(1)}%p` + (max_diff < 0.05 ? " → 라운드마다 같음 (곡선은 학습 추세의 점선)"
+          : ` (R${worst_r})` + (last_diff === null ? "" : ` · R${n} 차이 ${last_diff.toFixed(1)}%p` + (ga.length !== gc.length ? " (공통 마지막 라운드)" : ""))),
+        left: 0, top: 0, textStyle: {fontSize: 13, fontWeight: 600, color: ink}},
+      ...sides.map(([x, who], i) => ({text: `${who}: ${label_of(x, who).replace(/ \(.*\)$/, "")}`, left: i ? "52%" : 0, top: 20,
+        textStyle: {fontSize: 12, fontWeight: 600, color: i ? muted : ink, width: chart.getWidth() * 0.46, overflow: "truncate"}})),  // 칸 = 엣지별 숫자 표본 (패널 설명에)
     ],
+    grid: [{left: 28, right: "52%", top: 52, bottom: 18}, {left: "56%", right: 4, top: 52, bottom: 18}],
+    xAxis: [0, 1].map(gi => ({type: "category", gridIndex: gi, data: [...Array(10).keys()].map(String), position: "bottom", axisTick: {show: false},
+      axisLine: {show: false}, axisLabel: {color: ink, fontWeight: 700, fontSize: 11}})),
+    yAxis: [edges_b, edges_c].map((es, gi) => ({type: "category", gridIndex: gi, data: es, inverse: true, axisTick: {show: false}, axisLine: {show: false},
+      axisLabel: {color: ink, fontWeight: 700}})),
+    visualMap: {show: false, min: 1, max: max_n, inRange: {color: SEQ_BLUE}, seriesIndex: [0, 1]},
+    series: sides.map(([x], gi) => ({type: "heatmap", xAxisIndex: gi, yAxisIndex: gi, data: cells(x, gi), emphasis: {disabled: true},
+      itemStyle: {borderColor: css_var("--surface"), borderWidth: 2}, label: {show: false}})),  // 칸 색 = 표본 수, 빈 칸 = 그 숫자 없음 (값은 툴팁)
   });
 
   const ma = compare_metrics(b), mc = compare_metrics(c);
@@ -227,5 +251,98 @@ function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도
   chart.resize();  // 표가 들어간 뒤 줄어든 그래프 칸에 맞춤
 }
 
+function headline_pin(s, t) {  // 고정한 대상 요약 한 줄 (명세 사용성: 지정한 클라·배정·통신 기록을 빨리 찾게) → [[글, 굵게?], ...]
+  const b = s.bundle, r = s.round, ce = client_edge(b);
+  const reqs = b.comm.filter(x => x.round === r);
+  const req_text = xs => {
+    const m = xs.filter(is_measured), f = m.filter(x => !x.ok).length, inj = xs.length - m.length;
+    return [`R${r} 요청 ${m.length} · 실패 ${f}` + (inj ? ` · 시험 ${inj}` : ""), f > 0];
+  };
+  if (t.type === "client") {
+    const c = t.id, e = ce[c], rank = b.assignment.check.client_pref_rank[c];
+    const rec = b.train.find(x => x.target === c && x.round === r);
+    return [[`${c} → ${e || "미배정"}`, true], [`숫자 ${digits_of(b, c).join("·")}`], [e && rank ? `${e} = ${c}의 ${rank}순위` : "배정 순위 없음"],
+      [rec ? (rec.participated ? `R${r} 클라 모델 ${pct(rec.acc)}` : `R${r} 집계에서 빠짐`) : `R${r} 기록 없음`, !!rec && !rec.participated],
+      req_text(reqs.filter(x => x.src === c))];
+  }
+  if (t.type === "edge") {
+    const e = t.id, comp = b.assignment.edge_composition[e], cs = nsort(b.assignment.assignment[e] || []);
+    const miss = comp.digit_counts.map((n, d) => (n ? null : d)).filter(d => d !== null);
+    const row = b.train.find(x => x.target === e && x.round === r);
+    const agg = row && row.clients ? row.clients.length : null;
+    return [[`${e} · 클라 ${cs.join("·")}`, true], [`${comp.n.toLocaleString()}장`],
+      [`숫자 ${10 - miss.length}/10` + (miss.length ? ` (${miss.join("·")} 없음)` : "")],
+      ...(agg !== null && agg < cs.length ? [[`R${r} 집계 ${agg}명 (${row.clients.join("·")})`, true]] : []),
+      req_text(reqs.filter(x => x.src === e || x.dst === e))];
+  }
+  const d = t.id, owners = nsort(Object.keys(b.split.clients).filter(c => b.split.clients[c].digit_counts[d] > 0));
+  const g = b.train.find(x => x.target === "global" && x.round === r);
+  const low = g ? g.acc_by_digit.indexOf(Math.min(...g.acc_by_digit)) === d : false;
+  return [[`숫자 ${d}`, true], [`가진 클라 ${owners.map(c => `${c}(${ce[c] || "미배정"})`).join("·") || "없음"}`],
+    [g ? `R${r} 공동 정확도 ${pct(g.acc_by_digit[d])}` + (low ? " · 이 라운드에서 가장 낮음" : "") : `R${r} 기록 없음`, low]];
+}
+
+function headline_result(s) {  // 지금 실험 쌍의 핵심 결과 한 줄 (5초 안에 결론) → [[글, 굵게?], ...]
+  const b = s.bundle, c = s.compare_bundle;
+  const ga = global_series(b), gc = c ? global_series(c) : [];
+  const n = Math.min(done_rounds(b), c ? done_rounds(c) : 0);
+  const name = x => `${x.assignment.method === "pref" ? "선호" : "무작위"}${x.config.inject ? "·결함 주입" : ""}${x.config.fault_on ? "·지연·중단" : ""}`;
+  if (!c || !n || s.compare_exp === s.exp) {  // 비교 실험이 없거나, 자기 자신이거나, 비교 실험에 끝난 라운드가 없음
+    const last = ga.filter(Boolean).pop();
+    const why = !c ? "비교 실험을 고르면 차이를 요약" : s.compare_exp === s.exp ? "다른 비교 실험을 고르면 차이를 요약" : "비교 실험은 아직 끝난 라운드가 없음";
+    return [[`${name(b)}`, true], [last ? `R${last.round} 공동 정확도 ${pct(last.acc)}` : "끝난 라운드 없음"], [why]];
+  }
+  const keys = config_diff(b.config, c.config);
+  if (keys.length) return [[`${name(b)} vs ${name(c)}`, true], [`학습 설정이 다름 (${keys.join(", ")})`, true], ["정확도 차이를 비교 조건 탓으로 볼 수 없음"]];
+  const acc = (g, r) => (g[r - 1] ? g[r - 1].acc : null);
+  const diffs = [...Array(n).keys()].map(i => Math.abs(acc(ga, i + 1) - acc(gc, i + 1)) * 100);
+  const max_d = Math.max(...diffs), worst = diffs.indexOf(max_d) + 1, last_d = diffs[n - 1];
+  const same = max_d < 0.05;
+  const fx = b.config.fault_on ? b : c.config.fault_on ? c : null;
+  if (fx) {
+    const all = missing_rounds(fx), other = fx === b ? c : b;
+    const miss = all.filter(([r]) => r <= n), later = all.filter(([r]) => r > n);  // 두 실험이 다 끝낸 R1~Rn 안에서만 판단
+    const said = all.length ? all.map(([r, cs]) => `R${r}에 ${cs.join("·")} 빠짐`).join(", ") : "빠진 클라 없음";
+    if (!miss.length) return [[`지연·중단`, true], [said], [later.length ? `비교는 R${n}까지라 빠진 라운드는 비교 못 함` : `R1~R${n} 최대 차이 ${max_d.toFixed(1)}%p`]];
+    const at = miss.find(([r]) => r === worst);
+    const drop = (acc(global_series(fx), worst) - acc(global_series(other), worst)) * 100;
+    const last_miss = Math.max(...miss.map(([r]) => r));
+    const after = !at ? `R${n} 차이 ${last_d.toFixed(1)}%p`
+      : last_miss < n && last_d < 0.5 ? `R${last_miss + 1}부터 회복 (R${n} 차이 ${last_d.toFixed(1)}%p)`  // 실제로 차이가 줄었을 때만 '회복'
+      : `R${n} 차이 ${last_d.toFixed(1)}%p`;
+    return [[`지연·중단`, true], [said],
+      [at ? `R${worst} 공동 정확도 ${drop >= 0 ? "+" : ""}${drop.toFixed(1)}%p` : `가장 큰 차이 R${worst} ${max_d.toFixed(1)}%p (빠진 라운드 아님)`, true], [after]];
+  }
+  const ix = b.config.inject ? b : c.config.inject ? c : null;
+  if (ix && b.assignment.method === c.assignment.method) {
+    const inj = ix.comm.filter(x => !is_measured(x)), rej = inj.filter(x => !x.ok).length;
+    return [[`결함 주입`, true], [`시험 요청 ${inj.length}건 중 ${rej}건 거부`, rej === inj.length], [rej === inj.length ? "집계에 안 들어감" : "일부가 받아들여짐"],
+      [same ? `공동 정확도 같음 (${pct(acc(ga, n))})` : `공동 정확도 최대 차이 ${max_d.toFixed(1)}%p`, true]];
+  }
+  if (b.assignment.method !== c.assignment.method) {
+    const rk = x => x.assignment.check.mean_pref_rank;
+    return [[`${name(b)} vs ${name(c)}`, true], [`선호 충족도 ${rk(b) == null ? "–" : rk(b).toFixed(2)}위 vs ${rk(c) == null ? "–" : rk(c).toFixed(2)}위`, true],
+      [`엣지 간 숫자 분포 차이 ${edge_tv(b).toFixed(2)} vs ${edge_tv(c).toFixed(2)}`, true],
+      [same ? `공동 정확도 같음 (${pct(acc(ga, n))}) → 배정은 엣지 구성만 바꿈` : `공동 정확도 최대 차이 ${max_d.toFixed(1)}%p (R${worst})`]];
+  }
+  return [[`${name(b)} vs ${name(c)}`, true], [same ? `공동 정확도 같음 (${pct(acc(ga, n))})` : `공동 정확도 최대 차이 ${max_d.toFixed(1)}%p (R${worst})`]];
+}
+
+function render_headline(s) {
+  const host = document.getElementById("headline");
+  if (!s.bundle || !done_rounds(s.bundle)) { host.replaceChildren(); return; }
+  const t = state.pinned;  // 고정한 대상이 있으면 그 요약, 없으면 실험 쌍의 핵심 결과
+  const parts = t ? headline_pin(s, t) : headline_result(s);
+  const text = make_el("span", "headline_text", "");
+  parts.forEach(([p, bold], i) => {
+    if (i) text.append(make_el("span", "sep", "·"));
+    text.append(make_el(bold ? "b" : "span", "", p));
+  });
+  host.replaceChildren(make_el("span", t ? "headline_tag pin" : "headline_tag", t ? "고정한 대상" : "핵심 결과"), text);
+  host.title = parts.map(([p]) => p).join(" · ");
+}
+
 subscribe(render_trend);
+subscribe(render_headline);
+subscribe(render_headline, "analysis");
 subscribe(render_assign_compare);

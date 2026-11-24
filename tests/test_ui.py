@@ -237,6 +237,65 @@ def check_fault_view(browser, url, errors):
     pg.close()
 
 
+def check_headline(browser, url, errors):
+    """핵심 결과 한 줄(실험 쌍마다)·고정 요약·KPI 배정 상태·읽기 쉬운 실험 이름·실험 비교 히트맵·학습 추세 점선·데이터 분포 라운드 반영"""
+    pg = _open(browser, url, errors)
+    hl = pg.locator("#headline")
+    pg.wait_for_function("() => state.compare_bundle")
+    expect(hl).to_contain_text("핵심 결과")
+    expect(hl).to_contain_text("선호 충족도")  # 선호 vs 무작위 (시드 42)
+    assert pg.locator("#exp option:checked").inner_text() == "선호 · 시드 42"
+    kpi = pg.evaluate(KPI)
+    assert kpi[-1][0].startswith("평균 ") and "위반 0" in kpi[-1][1], kpi[-1]  # 배정 상태
+    assert pg.evaluate("() => chart_of('p_compare_chart').getOption().series.length") == 2  # 두 실험 엣지×숫자
+    assert pg.evaluate("() => chart_of('p_trend').getOption().series.some(x => x.name === '비교 실험 공동 정확도')")
+    pg.evaluate("() => set_pin({type: 'client', id: 'C2'})")
+    expect(hl).to_contain_text("고정한 대상")
+    expect(hl).to_contain_text("C2 → E1")
+    pg.keyboard.press("Escape")
+    expect(hl).to_contain_text("핵심 결과")
+
+    _select_exp(pg, "exp_random_seed42_inject")  # 같은 배정의 기본 실험이 시험 로그에 없음 → 결함 요청만 뺀 복사본과 비교
+    pg.wait_for_function("() => state.compare_bundle")
+    pg.evaluate("""() => { const c = structuredClone(state.bundle); c.config = {...c.config, inject: false}; c.comm = c.comm.filter(is_measured);
+                           state.compare_bundle = c; notify(); }""")
+    expect(hl).to_contain_text("결함 주입")
+    expect(hl).to_contain_text("2건 중 2건 거부")
+    _select_exp(pg, "exp_pref_seed42_fault")
+    pg.wait_for_function("() => state.compare_exp === 'exp_pref_seed42' && state.compare_bundle")
+    pg.evaluate("() => set_round(5)")
+    expect(hl).to_contain_text("R5에 C2·C6 빠짐")
+    labels = pg.evaluate("() => chart_of('p_data').getOption().yAxis[0].data")
+    assert "C2 · R5 빠짐" in labels and any("R5 2/3명" in x for x in labels), labels  # 그 라운드 실제 집계 기준
+    pg.evaluate("() => set_round(4)")
+    assert "C2 · R5 빠짐" not in pg.evaluate("() => chart_of('p_data').getOption().yAxis[0].data")
+    pg.close()
+
+
+def check_zoom(browser, url, errors):
+    """패널 크게 보기: 버튼 → 화면 대부분 + 글자 1.6배, Esc 는 크게 보기부터 닫고 고정은 그다음, 표 패널도 글자 커짐"""
+    pg = _open(browser, url, errors)
+    pg.evaluate("() => set_pin({type: 'client', id: 'C1'})")
+    pg.get_by_role("button", name="학습 추세 크게 보기").click()
+    panel = pg.locator(".panel.zoomed")
+    expect(panel).to_have_count(1)
+    expect(panel.locator("#p_trend")).to_have_count(1)
+    pg.wait_for_function("() => chart_of('p_trend').getWidth() > 1400")
+    assert pg.evaluate("() => chart_of('p_trend').getOption().title[0].textStyle.fontSize") > 20  # 13 × 1.6
+    assert pg.evaluate("() => chart_of('p_tree').getOption().series[0].label.fontSize") == 13  # 다른 패널은 그대로
+    pg.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
+    assert pg.evaluate("() => state.pinned && state.pinned.id") == "C1"  # 고정은 남음
+    pg.keyboard.press("Escape")
+    assert pg.evaluate("() => state.pinned") is None
+    assert pg.evaluate("() => chart_of('p_trend').getOption().title[0].textStyle.fontSize") == 13  # 닫으면 원래 크기
+    pg.get_by_role("button", name="요청 목록 크게 보기").click()
+    assert pg.evaluate("() => parseFloat(getComputedStyle(document.querySelector('.panel.zoomed .tbl')).fontSize)") >= 20
+    pg.locator("#zoom_backdrop").click(position={"x": 5, "y": 5})  # 바깥 클릭으로도 닫힘
+    expect(pg.locator(".panel.zoomed")).to_have_count(0)
+    pg.close()
+
+
 def check_compare_caption(browser, url, errors):
     """실험 비교 해석이 과장하지 않음: 설정이 다르면 그렇다고, 빠진 라운드가 마지막이면 '회복' 이라고 안 함"""
     pg = _open(browser, url, errors)
@@ -380,7 +439,7 @@ def test_ui():
     try:
         with sync_playwright() as p:
             browser = _launch(p)
-            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs, check_sample_blocks_run, check_fault_view, check_compare_caption]),
+            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs, check_sample_blocks_run, check_fault_view, check_compare_caption, check_headline, check_zoom]),
                     (algo_root, [check_algo_tab]),
                     (empty_root, [check_empty_run, check_run_tab]),
                     (no_logs_root, [check_no_logs, check_run_fail]),

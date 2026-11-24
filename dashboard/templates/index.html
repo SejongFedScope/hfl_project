@@ -2,7 +2,7 @@
 
 {% macro panel(p) %}
 <div class="panel">
-  <h3>{{ p.title }}<span class="tag">{{ p.tag }}</span></h3>
+  <h3>{{ p.title }}<span class="tag">{{ p.tag }}</span><button type="button" class="zoom_btn" data-zoom aria-label="{{ p.title }} 크게 보기" title="크게 보기 (Esc 로 닫기)">⤢ 크게</button></h3>
   <p class="desc">{{ p.desc }}</p>
   <div class="chart" id="{{ p.id }}"></div>
 </div>
@@ -31,6 +31,8 @@
 </header>
 
 <section id="kpi" aria-label="핵심 지표"></section>
+
+<section id="headline" aria-live="polite" aria-label="핵심 결과 또는 고정한 대상 요약"></section>
 
 <section id="legend" aria-label="범례">
   <span class="legend_group" id="legend_edges"><b>엣지</b></span>

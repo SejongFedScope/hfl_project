@@ -5,7 +5,9 @@ const ALGO_COLOR = {fedavg: () => css_var("--text-primary"), "fedprox_0.01": () 
 const EPOCH_SYMBOL = {1: "circle", 5: "rect", 10: "triangle"};
 
 function algo_key(x) { return x.algorithm === "fedavg" ? "fedavg" : `${x.algorithm}_${x.algorithm === "fedprox" ? x.mu : x.q}`; }
-function algo_label(x) { return x.algorithm === "fedavg" ? "FedAvg" : x.algorithm === "fedprox" ? `FedProx μ=${x.mu}` : `q-FedAvg q=${x.q}`; }
+function algo_label(x) { return x.algorithm === "fedavg" ? "FedAvg" : x.algorithm === "fedprox" ? `FedProx μ=${x.mu}` : `q-FedAvg q=${x.q} (참고)`; }
+function is_ref(g) { return g[0].algorithm === "qfedavg"; }  // 담당 A 결론: 원본 규칙은 보폭이 작아 20라운드 안에 학습이 덜 됨 → 정확도·공정성 판단에 안 씀 (숫자만 보여 줌)
+const REF_NOTE = "q-FedAvg(참고)는 원본 규칙의 보폭이 작아 20라운드 안에 학습이 덜 됨 → 학습 속도와 공정성 효과가 섞여 있어 비교·판정에서 뺌 (docs/algorithm_comparison.md 6절)";
 function algo_color(k) { return (ALGO_COLOR[k] || (() => css_var("--text-muted")))(); }
 function algo_order(x) { return [{fedavg: 0, fedprox: 1, qfedavg: 2}[x.algorithm], x.mu || 0, x.q || 0]; }
 function mean(v) { return v.reduce((a, b) => a + b, 0) / v.length; }
@@ -89,10 +91,10 @@ function render_algo() {
   render_algo_table(groups);
   render_algo_tradeoff();
   render_algo_digits(groups);
-  const fa = groups.find(g => g[0].algorithm === "fedavg");
-  const best = [...groups].sort((a, b) => mean(b.map(x => x.final_acc)) - mean(a.map(x => x.final_acc)))[0];
-  const fair = [...groups].sort((a, b) => mean(b.map(x => x.final_own_acc_min)) - mean(a.map(x => x.final_own_acc_min)))[0];
-  document.getElementById("algo_note").textContent = fa
+  const main = groups.filter(g => !is_ref(g));  // 판정은 FedAvg·FedProx 만 (q-FedAvg 는 참고)
+  const best = [...main].sort((a, b) => mean(b.map(x => x.final_acc)) - mean(a.map(x => x.final_acc)))[0];
+  const fair = [...main].sort((a, b) => mean(b.map(x => x.final_own_acc_min)) - mean(a.map(x => x.final_own_acc_min)))[0];
+  document.getElementById("algo_note").textContent = main.length
     ? `epoch ${algo_ui.epoch}: 정확도 최고 ${algo_label(best[0])} ${pct(mean(best.map(x => x.final_acc)))} · 공정성(클라별 최솟값) 최고 ${algo_label(fair[0])} ${pct(mean(fair.map(x => x.final_own_acc_min)))}`
     : "";
 }
@@ -153,7 +155,10 @@ function render_algo_table(groups) {
     ["하락 라운드 수", "acc_drop_rounds", v => v.toFixed(1), false],
   ];
   const means = cols.map(([, f]) => groups.map(g => mean(g.map(x => x[f]))));
-  const best = cols.map(([, , , up], i) => (up === null ? null : (up ? Math.max : Math.min)(...means[i])));
+  const best = cols.map(([, , , up], i) => {  // 열마다 가장 좋은 값 (q-FedAvg 참고 줄은 빼고 고름)
+    const vals = means[i].filter((_, r) => !is_ref(groups[r]));
+    return up === null || !vals.length ? null : (up ? Math.max : Math.min)(...vals);
+  });
   const table = document.createElement("table");
   table.className = "tbl algo_tbl";
   const head = document.createElement("tr");
@@ -164,6 +169,7 @@ function render_algo_table(groups) {
     const k = algo_key(g[0]);
     const tr = document.createElement("tr");
     tr.classList.toggle("dim", !algo_on(k));
+    tr.classList.toggle("ref", is_ref(g));
     const name = document.createElement("td");
     name.append(Object.assign(document.createElement("i"), {className: "dot", style: `background:${algo_color(k)}`}), " " + algo_label(g[0]));
     tr.append(name);
@@ -171,7 +177,7 @@ function render_algo_table(groups) {
       const vals = g.map(x => x[f]);
       const td = Object.assign(document.createElement("td"), {className: "num", textContent: fmt(mean(vals))});
       if (vals.length > 1) td.append(Object.assign(document.createElement("small"), {textContent: `${fmt(Math.min(...vals))}~${fmt(Math.max(...vals))}`}));  // 범위는 둘째 줄
-      if (best[i] !== null && Math.abs(means[i][r] - best[i]) < 1e-12) td.classList.add("diff");
+      if (best[i] !== null && !is_ref(g) && Math.abs(means[i][r] - best[i]) < 1e-12) td.classList.add("diff");
       tr.append(td);
     });
     tr.onmouseenter = () => { if (algo_ui.focus !== k) { algo_ui.focus = k; render_algo(); } };  // 다시 그려도 같은 줄이면 반복 안 함
@@ -181,16 +187,19 @@ function render_algo_table(groups) {
   });
   const fa = groups.find(g => g[0].algorithm === "fedavg");
   const cap = document.createElement("caption");
-  if (fa && groups.length > 1) {
+  const others = groups.filter(g => g !== fa && !is_ref(g));
+  if (fa && others.length) {
     const base_acc = mean(fa.map(x => x.final_acc)), base_norm = mean(fa.map(x => x.mean_update_norm));
-    cap.textContent = "FedAvg 대비: " + groups.filter(g => g !== fa).map(g => {
+    cap.textContent = "FedAvg 대비: " + others.map(g => {
       const d_acc = (mean(g.map(x => x.final_acc)) - base_acc) * 100, d_norm = (mean(g.map(x => x.mean_update_norm)) / base_norm - 1) * 100;
       const sign = (v, k) => { const t = v.toFixed(k); return Number(t) === 0 ? (0).toFixed(k) : (v > 0 ? "+" : "") + t; };  // -0.0 → 0.0
       return `${algo_label(g[0])} 정확도 ${sign(d_acc, 1)}%p · 변화량 ${sign(d_norm, 0)}%`;
     }).join(" / ");
   }
   table.prepend(cap);
-  document.getElementById("p_algo_table").replaceChildren(table);
+  const box = [table];
+  if (groups.some(is_ref)) box.push(Object.assign(document.createElement("p"), {className: "algo_ref_note", textContent: REF_NOTE}));
+  document.getElementById("p_algo_table").replaceChildren(...box);
 }
 
 function render_algo_tradeoff() {  // 모든 epoch: x = 평균 변화량, y = 최종 정확도 (시드 평균), 선택 epoch 만 진하게
@@ -239,14 +248,16 @@ function render_algo_digits(groups) {
         itemStyle: {opacity: on ? 1 : DIM}, label: {opacity: on ? 1 : DIM, color: v >= 0.75 ? "#ffffff" : "#0b0b0b"}});
     });
   });
-  const lows = rows.map(g => [...Array(10).keys()].map(d => mean(g.map(x => x.final_by_digit[d]))));
+  const judged = rows.filter(g => !is_ref(g));  // 해석은 FedAvg·FedProx 만 (q-FedAvg 참고는 학습이 덜 돼 숫자별 순서가 다름)
+  const lows = judged.map(g => [...Array(10).keys()].map(d => mean(g.map(x => x.final_by_digit[d]))));
   const worst = lows.map(r => r.indexOf(Math.min(...r)));  // 알고리즘마다 가장 낮은 숫자
   const mode = worst.length ? [...new Set(worst)].sort((x, y) => worst.filter(d => d === y).length - worst.filter(d => d === x).length)[0] : null;
-  const odd = rows.map((g, i) => [algo_label(g[0]), worst[i]]).filter(([, d]) => d !== mode);
-  const note = (mode === null ? "" : rows.length < 2 ? `해석: 가장 낮은 숫자 = ${mode}` : !odd.length
-    ? `해석: 가장 낮은 숫자 = ${mode} (보이는 ${rows.length}개 알고리즘 공통) → 알고리즘보다 데이터 분할(그 숫자를 가진 클라 수·조합)의 영향`
-    : `해석: 가장 낮은 숫자 = ${mode} (${worst.length - odd.length}/${worst.length} 알고리즘), 다른 것: ${odd.map(([n, d]) => `${n} → ${d}`).join(", ")}`) +
-    (no_log.length ? ` · 숫자별 기록 없음: ${no_log.join(", ")}` : "");
+  const odd = judged.map((g, i) => [algo_label(g[0]), worst[i]]).filter(([, d]) => d !== mode);
+  const rows_n = judged.length;
+  const note = [mode === null ? "" : rows_n < 2 ? `해석: 가장 낮은 숫자 = ${mode}` : !odd.length
+    ? `해석: 가장 낮은 숫자 = ${mode} (비교한 ${rows_n}개 알고리즘 공통) → 알고리즘보다 데이터 분할(그 숫자를 가진 클라 수·조합)의 영향`
+    : `해석: 가장 낮은 숫자 = ${mode} (${worst.length - odd.length}/${worst.length} 알고리즘), 다른 것: ${odd.map(([n, d]) => `${n} → ${d}`).join(", ")}`,
+  no_log.length ? `숫자별 기록 없음: ${no_log.join(", ")}` : "", rows.some(is_ref) ? "q-FedAvg(참고)는 학습이 덜 돼 해석에서 뺌" : ""].filter(Boolean).join(" · ");
   const text = base_text();
   draw(chart, {
     animation: false,

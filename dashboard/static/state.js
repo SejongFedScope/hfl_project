@@ -18,7 +18,11 @@ function set_tab(tab) {  // 개요 / 심층 분석 / 실험 실행. 선택 상�
 function css_var(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
 function chart_of(id) {  // 패널 div 하나 = ECharts 인스턴스 하나
-  if (!charts[id]) charts[id] = echarts.init(document.getElementById(id));
+  if (!charts[id]) {
+    const el = document.getElementById(id);
+    charts[id] = echarts.init(el);
+    new ResizeObserver(() => charts[id].resize()).observe(el);  // 핵심 결과 줄·표 길이 때문에 칸 크기가 바뀌어도 차트가 따라감
+  }
   return charts[id];
 }
 window.addEventListener("resize", () => {
@@ -72,9 +76,51 @@ function edge_color(e) {  // 엣지 순서대로 파랑·청록·보라, 4번째
   return css_var(["--e1", "--e2", "--e3"][i] || "--text-muted");
 }
 
+const ZOOM = 1.6;  // '크게 보기' 패널의 글자·점·선·여백 배율
+const ZOOM_KEYS = new Set(["fontSize", "symbolSize", "itemWidth", "itemHeight", "nodeWidth", "nodeGap", "distance", "borderWidth", "nameGap",
+  "left", "right", "top", "bottom"]);
+
+function zoom_option(o, k, parent) {  // 옵션 안 숫자 크기만 k 배 (함수·글자·"50%" 같은 값은 그대로, 선 두께는 lineStyle.width 만)
+  if (Array.isArray(o)) return o.map(x => zoom_option(x, k, parent));
+  if (!o || typeof o !== "object") return o;
+  const out = {};
+  for (const [key, v] of Object.entries(o)) {
+    const sized = typeof v === "number" && (ZOOM_KEYS.has(key) || (key === "width" && parent === "lineStyle"));
+    out[key] = sized ? v * k : key === "data" || key === "value" ? v : zoom_option(v, k, key);  // 데이터 값은 건드리지 않음
+  }
+  return out;
+}
+
 function draw(chart, option) {  // 매번 비우고 처음부터 그림
   chart.clear();  // ECharts 트리는 노드 수가 줄어드는 갱신에서 내부 오류(__edge)가 나서 이전 그림과 비교 자체를 안 하게 함
-  chart.setOption(option);
+  const zoomed = chart.getDom().closest(".panel.zoomed");
+  if (zoomed && option.series) option.series = [].concat(option.series).map(sr => ({...sr, data: sr.data && sr.data.map(d => zoom_option(d, ZOOM))}));
+  if (!zoomed) return chart.setOption(option);
+  const big = zoom_option(option, ZOOM);
+  const fill = (o, key) => [].concat(o || []).forEach(x => { x[key] = {...(x[key] || {})}; if (x[key].fontSize === undefined) x[key].fontSize = 12 * ZOOM; });  // 크기를 안 적은 글자(기본 12)도 키움
+  fill(big.xAxis, "axisLabel");
+  fill(big.yAxis, "axisLabel");
+  fill(big.legend, "textStyle");
+  big.textStyle = {...(big.textStyle || {}), fontSize: (big.textStyle && big.textStyle.fontSize) || 12 * ZOOM};
+  chart.setOption(big);
+}
+
+function toggle_zoom(panel) {  // 패널 크게 보기 ↔ 원래 자리 (글자가 작아 발표 화면에서 안 읽힐 때)
+  Object.values(charts).forEach(c => c.dispatchAction({type: "hideTip"}));  // 남은 툴팁이 크기가 바뀐 차트를 가리키며 오류 내지 않게
+  const open = document.querySelector(".panel.zoomed");
+  if (open) {
+    open.classList.remove("zoomed");
+    open.querySelector("[data-zoom]").textContent = "⤢ 크게";
+    document.getElementById("zoom_backdrop").hidden = true;
+  }
+  if (panel && panel !== open) {
+    panel.classList.add("zoomed");
+    const btn = panel.querySelector("[data-zoom]");
+    btn.textContent = "✕ 닫기";
+    btn.focus();
+    document.getElementById("zoom_backdrop").hidden = false;
+  }
+  requestAnimationFrame(() => { Object.values(charts).forEach(c => c.resize()); notify(); });  // 새 크기·배율로 다시 그림
 }
 
 function is_measured(x) { return x.kind !== "injected"; }  // 명세: 측정값과 일부러 넣은 시험 기록을 구분
@@ -215,6 +261,14 @@ function update_live_status() {
 
 function exp_method(e) { return String(e).split("_")[1]; }  // exp_<배정방식>_seed..
 
+function exp_label(e) {  // run-20261124-110040/exp_pref_seed42_fault → "화면 실행 11/24 11:00 · 선호 · 시드 42 · 지연·중단"
+  const m = /^(?:run-\d{4}(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(\d+))?\/)?exp_([a-z]+)_seed(\d+)((?:_(?:inject|fault))*)$/.exec(e);
+  if (!m) return e;
+  const [, mo, d, hh, mi, ss, k, method, seed, tail] = m;  // 같은 분에 돌린 실행도 구분되게 초·순번까지
+  return (mo ? `화면 실행 ${mo}/${d} ${hh}:${mi}:${ss}${k ? ` (${k})` : ""} · ` : "") + ({pref: "선호", random: "무작위"}[method] || method) + ` · 시드 ${seed}` +
+    (tail.includes("inject") ? " · 결함 주입" : "") + (tail.includes("fault") ? " · 지연·중단" : "");
+}
+
 function is_variant(e) { return /_(inject|fault)/.test(e); }  // 결함 주입·지연·중단 실험
 
 function exp_seed(e) { const m = /_seed(\d+)/.exec(e); return m ? m[1] : null; }
@@ -242,7 +296,7 @@ function add_new_experiments(exps) {  // 실행 중에 새로 생긴 실험을 �
   for (const id of ["exp", "compare_exp"]) {
     const sel = document.getElementById(id);
     const have = new Set([...sel.options].map(o => o.value));
-    exps.filter(e => !have.has(e)).forEach(e => sel.add(new Option(e, e)));
+    exps.filter(e => !have.has(e)).forEach(e => sel.add(new Option(exp_label(e), e)));
   }
   auto_compare();  // 처음엔 실험이 하나뿐이라 자기와 비교 중 → 맞는 실험이 생기면 바꿈
 }
@@ -301,7 +355,12 @@ async function init() {
     set_status(`실험 목록을 불러오지 못함: ${err.message}`, true);
     return;
   }
-  document.querySelectorAll("[data-tab-btn]").forEach(b => { b.onclick = () => set_tab(b.dataset.tabBtn); });  // 로그가 없어도 실험 실행 탭은 씀
+  document.querySelectorAll("[data-tab-btn]").forEach(b => { b.onclick = () => { toggle_zoom(null); set_tab(b.dataset.tabBtn); }; });  // 로그가 없어도 실험 실행 탭은 씀
+  document.addEventListener("click", ev => { const z = ev.target.closest("[data-zoom]"); if (z) toggle_zoom(z.closest(".panel")); });
+  document.addEventListener("dblclick", ev => { const h = ev.target.closest(".panel > h3"); if (h && h.querySelector("[data-zoom]")) toggle_zoom(h.closest(".panel")); });  // 제목 두 번 클릭도
+  const backdrop = Object.assign(document.createElement("div"), {id: "zoom_backdrop", hidden: true});
+  backdrop.onclick = () => toggle_zoom(null);
+  document.body.append(backdrop);
   const start_tab = ["analysis", "algo", "run"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "overview";
   if (!exps.length) {
     set_tab(start_tab);
@@ -319,8 +378,8 @@ async function init() {
   const sel = document.getElementById("exp");
   const cmp = document.getElementById("compare_exp");
   for (const e of exps) {
-    sel.add(new Option(e, e));
-    cmp.add(new Option(e, e));
+    sel.add(new Option(exp_label(e), e));
+    cmp.add(new Option(exp_label(e), e));
   }
   cmp.value = default_compare(exps[0], exps);
   sel.onchange = async () => { await load_bundle(sel.value); auto_compare(); };
@@ -329,7 +388,7 @@ async function init() {
   document.getElementById("pin_chip").onclick = clear_pin;
   document.addEventListener("keydown", ev => {
     if (ev.target.tagName === "SELECT" || ev.target.tagName === "INPUT" || state.tab === "run") return;  // 선택 상자·슬라이더는 자기 키 동작 유지, 실험 실행 탭은 라운드 키 안 씀
-    if (ev.key === "Escape") clear_pin();
+    if (ev.key === "Escape") { if (document.querySelector(".panel.zoomed")) toggle_zoom(null); else clear_pin(); }  // 크게 보기부터 닫음
     if (ev.key === "ArrowLeft") set_round(state.round - 1);
     if (ev.key === "ArrowRight") set_round(state.round + 1);
   });
