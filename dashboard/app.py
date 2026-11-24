@@ -7,7 +7,8 @@ logs/ 의 실험 폴더를 읽어 화면에 JSON 으로 줌.
 import argparse
 import json
 
-from flask import Flask, abort, jsonify, render_template
+from flask import Flask, abort, jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
 
 from dashboard.runs import SAMPLE_ROOT, done_rounds, is_live
 from dashboard.runs import bp as runs_bp
@@ -78,6 +79,24 @@ ALGO = [  # '알고리즘 비교' 탭 (담당 A 심화 결과 logs/algo_compare 
 SCRIPTS = ["state.js", "kpi.js", "structure.js", "comm.js", "data.js", "global.js", "analysis.js", "run.js", "algo.js"]  # state.js 가 먼저 (나머지가 subscribe 함)
 
 
+@app.errorhandler(HTTPException)
+def api_error(e):
+    """/api 아래 오류는 HTML 대신 {"message"} JSON (수업 5장: 에러 본문 통일, 상태 코드 그대로). 화면 주소는 Flask 기본 페이지"""
+    if not request.path.startswith("/api/"):
+        return e
+    msg = {404: "없는 주소이거나 목록에 없는 실험", 405: "이 주소가 받지 않는 메소드"}.get(e.code, e.description)
+    return jsonify(message=msg), e.code
+
+
+@app.errorhandler(Exception)
+def api_crash(e):
+    """예상 못 한 오류: 쓰는 쪽에는 짧게만, 자세한 내용은 서버 출력에 (수업 5장: 500 에 내부 경로·구조를 싣지 않음)"""
+    app.logger.exception("처리 중 오류: %s", request.path)
+    if request.path.startswith("/api/"):
+        return jsonify(message="서버 내부 오류 (대시보드 서버 출력 확인)"), 500
+    return "서버 내부 오류", 500
+
+
 def log_source():
     """머리말에 보여 줄 로그 출처 (시험 로그인지 실제 로그인지 헷갈리지 않게)"""
     root = app.config["LOG_ROOT"]
@@ -100,13 +119,13 @@ def algo():
     + 실험마다 마지막 라운드 공동 모델의 숫자별 정확도. 없으면 404 + 만드는 명령"""
     root = app.config["LOG_ROOT"] / "algo_compare"
     if not (root / "summary.json").exists():
-        return jsonify(error="알고리즘 비교 결과가 없음",
+        return jsonify(message="알고리즘 비교 결과가 없음",
                        hint="python -m scripts.compare_algorithms --seeds 42 7 123 --epochs 1 5 10 --q 1 5 --q-epochs 1"), 404
     try:
         summary = read_json(root / "summary.json")
         results = summary["results"]
     except (ValueError, KeyError, TypeError):  # 쓰는 도중이거나 깨진 파일
-        return jsonify(error="알고리즘 비교 결과 파일을 읽지 못함 (만드는 중이면 끝난 뒤 다시)",
+        return jsonify(message="알고리즘 비교 결과 파일을 읽지 못함 (만드는 중이면 끝난 뒤 다시)",
                        hint="python -m scripts.compare_algorithms … 를 다시 실행"), 500
     for x in results:
         name = str(x.get("exp_id", ""))

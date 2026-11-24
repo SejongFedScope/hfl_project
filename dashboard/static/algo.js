@@ -36,7 +36,7 @@ async function load_algo() {
   try {
     const res = await fetch("/api/algo");
     const data = await res.json().catch(() => ({error: `서버 응답을 읽지 못함 (${res.status})`, hint: "대시보드 서버 출력 확인"}));
-    if (!res.ok) algo_ui.error = `${data.error} — ${data.hint}`;
+    if (!res.ok) algo_ui.error = `${data.message} — ${data.hint || ""}`;
     else if (!data.results || !data.results.length) algo_ui.error = "알고리즘 비교 결과가 비어 있음 — python -m scripts.compare_algorithms … 다시 실행";
     else algo_ui.data = data;
   } catch (err) {

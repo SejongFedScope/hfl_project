@@ -249,6 +249,11 @@ def is_live(exp):
     return job["proc"] is not None and job["proc"].poll() is None and exp in job["exps"]
 
 
+def fail(errors):
+    """오류 응답 본문: {"message": 사람이 읽는 한 줄, "errors": [{"field", "msg"}]} — message 는 수업 5장 에러 형식, errors 는 화면이 해당 칸을 빨갛게 하는 데 씀"""
+    return jsonify(message=" / ".join(e["msg"] for e in errors), errors=errors)
+
+
 def _body():
     """요청 JSON (깨졌거나 너무 깊게 중첩되면 None → 검사에서 400)"""
     try:
@@ -286,9 +291,9 @@ def same_origin_only():
     """다른 사이트가 사용자 브라우저로 실행·중지를 보내지 못하게: 주소는 이 PC(127.0.0.1·localhost)만, POST 는 JSON 만
     (JSON 요청은 브라우저가 다른 사이트에서 보낼 때 사전 확인(CORS preflight)을 거쳐 막힘)"""
     if request.host.rsplit(":", 1)[0] not in ("127.0.0.1", "localhost"):
-        return jsonify(errors=[{"field": "", "msg": "이 PC 주소(127.0.0.1)로만 쓸 수 있음"}]), 403
+        return fail([{"field": "", "msg": "이 PC 주소(127.0.0.1)로만 쓸 수 있음"}]), 403
     if request.method == "POST" and not request.is_json:
-        return jsonify(errors=[{"field": "", "msg": "JSON 요청만 받음"}]), 415
+        return fail([{"field": "", "msg": "JSON 요청만 받음"}]), 415
 
 
 @bp.get("/api/run/defaults")
@@ -300,7 +305,7 @@ def run_defaults():
 def run_preview():
     cfg, _, _, errors = validate(_body())
     if errors:
-        return jsonify(errors=errors), 400
+        return fail(errors), 400
     return jsonify(errors=[], preview=preview(cfg))
 
 
@@ -314,13 +319,13 @@ def run_status():
 def run_start():
     """→ 202 {"tag", "exps"} / 400 {"errors"} / 409 실행 중·시험 로그 모드"""
     if not run_allowed():
-        return jsonify(errors=[{"field": "", "msg": "시험 로그 모드(--sample)에서는 실행하지 않음 (시험 로그를 덮어쓰지 않게)"}]), 409
+        return fail([{"field": "", "msg": "시험 로그 모드(--sample)에서는 실행하지 않음 (시험 로그를 덮어쓰지 않게)"}]), 409
     cfg, methods, inject, errors = validate(_body())
     if errors:
-        return jsonify(errors=errors), 400
+        return fail(errors), 400
     with lock:
         if _status()["running"]:
-            return jsonify(errors=[{"field": "", "msg": f"이미 실행 중: {job['tag']}"}]), 409
+            return fail([{"field": "", "msg": f"이미 실행 중: {job['tag']}"}]), 409
         base = time.strftime("run-%Y%m%d-%H%M%S")  # '_' 없음 (화면이 실험 이름의 '_' 로 배정 방식을 읽음), 연도 포함 → 이름순 = 시간순
         tag, k = base, 1
         while (current_app.config["LOG_ROOT"] / tag).exists():  # 같은 초에 다시 누름 (앞 실행이 바로 실패한 경우)
@@ -348,7 +353,7 @@ def run_stop():
     """실행 중이면 끔 → 200 {status}. 끈 실험은 거기까지의 로그만 남음 (화면은 '끝난 라운드'까지 표시)"""
     with lock:
         if not _status()["running"]:
-            return jsonify(errors=[{"field": "", "msg": "실행 중인 실험 없음"}]), 409
+            return fail([{"field": "", "msg": "실행 중인 실험 없음"}]), 409
         _kill_tree(job["proc"])
         job["stopped"] = job["proc"].poll() != 0  # 끄는 사이에 정상으로 끝났으면 '중지'가 아님
         return jsonify(_status())

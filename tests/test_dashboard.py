@@ -32,6 +32,10 @@ def test_edge_cases():
     try:
         assert c.get("/api/experiments").get_json() == ["exp_cut", "exp_empty", "exp_ok"]  # 깨진 폴더는 목록에서 빠짐
         assert c.get("/api/exp_broken/bundle").status_code == 404
+        r = c.get("/api/nope/bundle")  # /api 오류는 HTML 이 아니라 {"message"} (수업 5장 에러 형식)
+        assert r.status_code == 404 and r.is_json and r.get_json()["message"]
+        r = c.post("/api/experiments")
+        assert r.status_code == 405 and r.get_json()["message"]
         for bad in ("nope", "..", "..%2F..%2Fconfigs", "exp_ok%2F.."):  # 로그 폴더 밖으로 못 나감
             assert c.get(f"/api/{bad}/bundle").status_code == 404, bad
 
@@ -118,7 +122,7 @@ def test_run_validation():
     }
     for name, change in bad_cases.items():
         r = c.post("/api/run/preview", json={**d, **change})
-        assert r.status_code == 400 and r.get_json()["errors"], name
+        assert r.status_code == 400 and r.get_json()["errors"] and r.get_json()["message"], name
         assert c.post("/api/run", json={**d, **change}).status_code == 400, name
     assert c.post("/api/run/preview", json={**d, "inject": False, "inject_round": None}).status_code == 200  # 주입을 끄면 주입 라운드는 안 봄
     for raw in ('{"seed": NaN}', '{"rounds": Infinity}', "[1, 2]", '"x"', "5"):  # 화면은 안 보내지만 API 를 직접 부르면 → 500 이 아니라 400

@@ -10,7 +10,10 @@
 python -m scripts.run_all            # 실험 3개 → logs/ (약 1분)
 python -m dashboard.app              # http://127.0.0.1:5050  (실제 로그)
 python -m dashboard.app --sample     # 시험 로그 (dashboard/sample_logs) — 실험 없이 화면만 볼 때
+flask --app dashboard.app --debug run --port 5050   # 같은 화면을 flask 명령으로 (수업 방식, --debug 는 개발할 때만)
 ```
+
+API 오류는 모두 JSON `{"message": "…"}` 와 맞는 상태 코드(400 잘못된 값 · 404 없는 실험 · 409 실행 중 · 415 JSON 아님 · 500 내부 오류)로 온다. 실험 실행 API 는 칸별 표시를 위해 `errors: [{"field", "msg"}]` 를 같이 보낸다.
 
 - 머리말 왼쪽 칩이 지금 읽는 로그 출처: `실제 로그 (logs)` / `시험 로그 (dashboard/sample_logs)`
 - **실행 중 자동 갱신**: 대시보드를 먼저 띄워 두고 `run_all` 을 돌리면 2초마다 새 로그를 받아 라운드를 따라감. 실험이 끝나면 상태 줄이 `실행 끝` 으로 바뀜. 로그가 하나도 없을 때 열어 두면 첫 실험이 생기는 순간 화면이 열림
@@ -142,4 +145,5 @@ KPI 는 선택 라운드 기준.
 ```powershell
 python -m tests.test_dashboard   # 로그 API 엣지 케이스 · 보고서 생성 · 템플릿 · 실험 실행 API (잘못된 입력 400, 지연·중단 검사, 실제 2라운드 실행, 중지) · 알고리즘 비교 API
 python -m tests.test_ui          # 화면 클릭·키보드·자동 갱신·탭·실험 실행 탭·지연·중단 표시·알고리즘 비교 탭·표 잘림 (playwright 있을 때)
+python -m unittest               # 위 둘 + 학습(A)·서버(B)·필수 6항목(공동)까지 한 번에 (tests/test_suite.py)
 ```
