@@ -196,11 +196,77 @@ def check_run_tab(browser, url, errors):
     expect(pg.locator("#run_sum_C2")).to_have_text("3개 · 400장")
     expect(pg.locator("#run_go")).to_be_enabled()
 
+    pg.get_by_label("클라 지연·중단 + 엣지 대기 제한").check()  # 지연·중단 주입: 미리보기에 R5 실제 제출 클라
+    expect(pv).to_contain_text("R5 E1 제출 클라")
+    expect(pv).to_contain_text("C1·C4 + C2 늦게 (대기 제한에 걸리면 빠짐)")
+    pg.select_option("#run_fault_drop_client", "C2")  # 지연 클라와 같은 클라 → 오류
+    expect(pg.locator("#run_errors")).to_contain_text("지연·중단")
+    expect(pg.locator("#run_go")).to_be_disabled()
+    pg.get_by_role("button", name="기본값으로").click()
+    expect(pg.locator("#run_fault_round")).to_be_disabled()
+
     pg.get_by_role("button", name="E1 순위에서 C6 올리기").click()  # 4위 → 3위
     expect(pg.locator(".run_edge").first.locator("li").nth(2)).to_contain_text("C6")
     r0 = pg.evaluate("() => state.round")
     pg.keyboard.press("ArrowRight")
     assert pg.evaluate("() => state.round") == r0
+    assert pg.evaluate("() => document.documentElement.scrollHeight - innerHeight") <= 0
+    pg.close()
+
+
+def check_fault_view(browser, url, errors):
+    """지연·중단 실험 (시험 로그 exp_pref_seed42_fault, R5: C2 지연 → 대기 제한 넘겨 409, C6 중단)
+    트리 아래 빠진 이유, 비교 실험 = 같은 배정의 기본 실험, 비교를 직접 고르면 그 뒤로 안 바꿈"""
+    pg = _open(browser, url, errors)
+    _select_exp(pg, "exp_pref_seed42_fault")
+    pg.wait_for_function("() => state.compare_exp === 'exp_pref_seed42'")  # 무작위가 아니라 같은 선호 배정 기본 실험
+    pg.evaluate("() => set_round(5)")
+    note = pg.evaluate("() => chart_of('p_tree').getOption().title[0].text")
+    assert "C2 늦게 제출 → 거부 409" in note and "C6 제출 없음(중단)" in note, note
+    assert pg.evaluate("() => chart_of('p_tree').getOption().series[0].right") >= 180  # '시험 1 · 미참여' 가 안 잘리게 여백
+    pg.evaluate("() => set_round(4)")
+    assert pg.evaluate("() => chart_of('p_tree').getOption().title[0].text") == ""  # 빠진 클라 없는 라운드
+    pg.select_option("#compare_exp", "exp_random_seed42_inject")  # 직접 고름
+    _select_exp(pg, "exp_pref_seed42")
+    assert pg.evaluate("() => state.compare_exp") == "exp_random_seed42_inject"
+    picks = pg.evaluate("""() => { const ex = ['exp_pref_seed42', 'exp_pref_seed42_inject', 'exp_random_seed42', 'exp_random_seed7',
+                                               'run-1/exp_pref_seed42_inject_fault', 'run-2/exp_random_seed7_fault', 'run-3/exp_pref_seed7'];
+                                    return ex.map(e => default_compare(e, ex)); }""")
+    assert picks == ["exp_random_seed42", "exp_pref_seed42", "exp_pref_seed42", "run-3/exp_pref_seed7",
+                     "exp_pref_seed42_inject", "exp_random_seed7", "exp_random_seed7"], picks  # 꼬리표 하나씩, 시드 같은 것
+    pg.close()
+
+
+def check_compare_caption(browser, url, errors):
+    """실험 비교 해석이 과장하지 않음: 설정이 다르면 그렇다고, 빠진 라운드가 마지막이면 '회복' 이라고 안 함"""
+    pg = _open(browser, url, errors)
+    _select_exp(pg, "exp_pref_seed42_fault")
+    pg.wait_for_function("() => state.compare_bundle && state.compare_exp === 'exp_pref_seed42'")
+    cap = lambda: pg.evaluate("() => document.querySelector('#p_compare caption').textContent")
+    pg.evaluate("""() => { const c = state.compare_bundle; c.config = {...c.config, lr: 0.05}; notify(); }""")  # 학습률이 다르면
+    assert "학습 설정이 다름 (학습률)" in cap(), cap()
+    pg.evaluate("""() => { const b = state.bundle, c = state.compare_bundle; c.config = {...b.config};
+        b.train = b.train.map(x => (x.round === 6 && x.target === 'C6' ? {...x, participated: false} : x));  // 마지막 라운드에 빠짐
+        notify(); }""")
+    assert "R7 부터" not in cap(), cap()
+    pg.close()
+
+
+def check_algo_tab(browser, url, errors):
+    """알고리즘 비교 탭 (작은 가짜 결과): 표·곡선·산점도·히트맵, epoch·시드 바꾸기, 알고리즘 고정 → 다른 줄 흐림"""
+    pg = _open(browser, url, errors)
+    pg.get_by_role("tab", name="알고리즘 비교").click()
+    expect(pg.locator("#p_algo_table tbody tr")).to_have_count(2)
+    expect(pg.locator("#kpi")).to_be_hidden()
+    assert pg.evaluate("() => chart_of('p_algo_curve').getOption().series.length") == 2
+    assert pg.evaluate("() => chart_of('p_algo_tradeoff').getOption().series.length") == 2  # epoch 1·5
+    expect(pg.locator("#p_algo_table caption")).to_contain_text("FedProx μ=1 정확도 -2.0%p")
+    pg.locator("#algo_epoch label", has_text="5").click()
+    assert pg.evaluate("() => algo_ui.epoch") == 5
+    pg.locator("#algo_seed label", has_text="42").click()
+    expect(pg.locator("#p_algo_table tbody tr").first).not_to_contain_text("~")  # 시드 하나면 범위 없음
+    pg.locator("#p_algo_table tbody tr").nth(1).click()  # FedProx 고정
+    expect(pg.locator("#p_algo_table tbody tr.dim")).to_have_count(1)
     assert pg.evaluate("() => document.documentElement.scrollHeight - innerHeight") <= 0
     pg.close()
 
@@ -301,6 +367,10 @@ def test_ui():
     (empty_root / "exp_empty" / "train.jsonl").unlink()
     (empty_root / "exp_empty" / "comm.jsonl").unlink()
     no_logs_root = Path(tempfile.mkdtemp())  # 실험 폴더가 하나도 없음
+    algo_root = Path(tempfile.mkdtemp())  # 알고리즘 비교 결과(가짜) + 실험 하나
+    shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", algo_root / "exp_pref_seed42")
+    from tests.test_dashboard import make_algo_fixture
+    make_algo_fixture(algo_root)
     live_root = Path(tempfile.mkdtemp())  # 라운드 1까지만 쓴 '실행 중' 실험
     run = live_root / "exp_pref_seed42"
     shutil.copytree(SAMPLE_ROOT / "exp_pref_seed42", run)
@@ -310,7 +380,8 @@ def test_ui():
     try:
         with sync_playwright() as p:
             browser = _launch(p)
-            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs, check_sample_blocks_run]),
+            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs, check_sample_blocks_run, check_fault_view, check_compare_caption]),
+                    (algo_root, [check_algo_tab]),
                     (empty_root, [check_empty_run, check_run_tab]),
                     (no_logs_root, [check_no_logs, check_run_fail]),
                     (live_root, [lambda b, u, e: check_live(b, u, e, live_root)])]
@@ -329,6 +400,7 @@ def test_ui():
     finally:
         shutil.rmtree(empty_root)
         shutil.rmtree(no_logs_root)
+        shutil.rmtree(algo_root)
         shutil.rmtree(live_root)
 
 

@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from hfl.common import load_config
 
-from dashboard.app import ANALYSIS, REGIONS, SAMPLE_ROOT, SCRIPTS, app
+from dashboard.app import ALGO, ANALYSIS, REGIONS, SAMPLE_ROOT, SCRIPTS, app
 
 
 def _logs_with_edge_cases():
@@ -44,7 +44,7 @@ def test_edge_cases():
         assert empty["train"] == [] and empty["comm"] == [] and empty["assignment"]["assignment"]
 
         html = c.get("/").get_data(as_text=True)  # Jinja 템플릿: 개요·분석 패널과 스크립트가 목록대로 나오고 로그 출처가 보임
-        panel_ids = [p["id"] for r in REGIONS for p in r["panels"]] + [p["id"] for p in ANALYSIS]
+        panel_ids = [p["id"] for r in REGIONS for p in r["panels"]] + [p["id"] for p in ANALYSIS] + [p["id"] for p in ALGO]
         assert all(f'id="{i}"' in html for i in panel_ids) and html.count('<script src="/static/') == len(SCRIPTS) + 1  # + echarts
         assert "실제 로그" in html and "{%" not in html and "{{" not in html
 
@@ -89,6 +89,7 @@ def test_make_report():
 
 def test_run_validation():
     """실험 실행 탭: 기본값 미리보기, 잘못된 입력은 400 (서버가 다시 검사), 시험 로그 모드는 실행 금지"""
+    app.config["LOG_ROOT"] = Path(tempfile.mkdtemp())  # 앞 검사가 바꿔 둔 폴더(시험 로그면 실행 409)에 안 기대게
     c = app.test_client()
     d = c.get("/api/run/defaults").get_json()
     pv = c.post("/api/run/preview", json=d).get_json()["preview"]
@@ -130,6 +131,73 @@ def test_run_validation():
     assert c.post("/api/run", json=d).status_code == 409
     for raw in ('{"seed": ' + "9" * 400 + "}", "[" * 100000 + "]" * 100000):  # 아주 큰 정수, 아주 깊은 중첩 → 500 아님
         assert c.post("/api/run/preview", data=raw, content_type="application/json").status_code == 400, raw[:20]
+
+
+def make_algo_fixture(root):
+    """알고리즘 비교 결과 작은 가짜 (담당 A scripts/compare_algorithms.py 와 같은 모양): epoch 1·5 × FedAvg·FedProx μ=1, 시드 42·7, 3라운드"""
+    import json
+    out = root / "algo_compare"
+    results = []
+    for seed in (42, 7):
+        for e in (1, 5):
+            for algo, mu in (("fedavg", 0.0), ("fedprox", 1.0)):
+                exp_id = f"alg_{algo}_e{e}_seed{seed}"
+                acc = [0.7 + 0.05 * r - (0.02 if mu else 0) for r in range(3)]
+                (out / exp_id).mkdir(parents=True)
+                (out / exp_id / "train.jsonl").write_text("".join(json.dumps(
+                    {"target": "global", "round": r + 1, "acc": a, "acc_by_digit": [a - 0.01 * d for d in range(10)]}) + "\n" for r, a in enumerate(acc)), encoding="utf-8")
+                results.append({"seed": seed, "exp_id": exp_id, "algorithm": algo, "mu": mu, "q": None, "local_epochs": e,
+                                "final_acc": acc[-1], "final_loss": 0.5, "best_acc": acc[-1], "final_min_digit_acc": acc[-1] - 0.09,
+                                "acc_drop_rounds": 0, "final_client_acc_min": 0.4, "mean_update_norm": 0.5 if mu else 1.0,
+                                "final_own_acc_min": 0.8, "final_digit_acc_std": 0.07,
+                                "history": [{"round": r + 1, "acc": a} for r, a in enumerate(acc)]})
+    (out / "summary.json").write_text(json.dumps({"rounds": 3, "structure": "single_central", "seeds": [42, 7], "results": results}), encoding="utf-8")
+
+
+def test_algo_api():
+    """알고리즘 비교 API: 결과가 없으면 404 + 만드는 명령, 있으면 실험마다 마지막 라운드 숫자별 정확도까지"""
+    root = Path(tempfile.mkdtemp())
+    app.config["LOG_ROOT"] = root
+    c = app.test_client()
+    try:
+        r = c.get("/api/algo")
+        assert r.status_code == 404 and "compare_algorithms" in r.get_json()["hint"]
+        make_algo_fixture(root)
+        d = c.get("/api/algo").get_json()
+        assert len(d["results"]) == 8 and all(len(x["final_by_digit"]) == 10 for x in d["results"])
+        assert c.get("/api/experiments").get_json() == []  # algo_compare 폴더는 실험 목록에 안 섞임
+        import json
+        summary = json.loads((root / "algo_compare" / "summary.json").read_text(encoding="utf-8"))
+        summary["results"][0]["exp_id"] = "../../outside"  # summary 안 이름으로 폴더 밖을 못 읽음
+        (root / "algo_compare" / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+        assert c.get("/api/algo").get_json()["results"][0]["final_by_digit"] is None
+        (root / "algo_compare" / "summary.json").write_text("{\"results\": [", encoding="utf-8")  # 쓰는 도중
+        r = c.get("/api/algo")
+        assert r.status_code == 500 and r.is_json and "hint" in r.get_json()
+    finally:
+        app.config["LOG_ROOT"] = SAMPLE_ROOT
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_run_fault():
+    """실험 실행 탭의 지연·중단 주입: 미리보기에 엣지별 실제 제출 클라, 잘못된 조합은 400 (담당 B check_fault 그대로)"""
+    c = app.test_client()
+    d = c.get("/api/run/defaults").get_json()
+    pv = c.post("/api/run/preview", json={**d, "fault_on": True}).get_json()["preview"]
+    assert pv["pref"]["fault_edges"] == {"E1": {"sure": ["C1", "C4"], "late": ["C2"]}, "E2": {"sure": ["C3", "C5"], "late": []}}  # C6 중단, C2 는 늦게 (장담 못 함)
+    r = c.post("/api/run/preview", json={**d, "fault_on": True, "fault": {**d["fault"], "deadline_sec": 0.3}})  # 평소 라운드에도 3명이 못 모임 → 실행이 멈췄던 값
+    assert r.status_code == 400 and [e["field"] for e in r.get_json()["errors"]] == ["fault.deadline_sec"]
+    r = c.post("/api/run/preview", json={**d, "fault_on": True, "local_epochs": 10})  # 학습량이 크면 기본 2초도 모자람
+    assert r.status_code == 400 and "fault.deadline_sec" in [e["field"] for e in r.get_json()["errors"]]
+    r = c.post("/api/run/preview", json={**d, "fault_on": True, "fault": {**d["fault"], "round": 30}})
+    assert "fault.round" in [e["field"] for e in r.get_json()["errors"]]  # 라운드 칸에 표시
+    bad = {"같은 클라 지연·중단": {"drop_client": "C2"}, "라운드 범위 밖": {"round": 99}, "없는 클라": {"delay_client": "C9"},
+           "지연 0초": {"delay_sec": 0}, "대기 제한 글자": {"deadline_sec": "2"}}  # (엣지 정원 3, 빠지는 클라 최대 2 → 엣지가 비는 경우는 없음)
+    for name, ch in bad.items():
+        body = {**d, "fault_on": True, "fault": {**d["fault"], **ch}}
+        r = c.post("/api/run/preview", json=body)
+        assert r.status_code == 400 and any(e["field"].startswith("fault") for e in r.get_json()["errors"]), (name, r.get_json())
+    assert c.post("/api/run/preview", json={**d, "fault_on": False, "fault": None}).status_code == 200  # 끄면 안 봄
 
 
 def test_run_markers():
@@ -224,6 +292,6 @@ def test_run_real():
 
 
 if __name__ == "__main__":
-    for t in (test_edge_cases, test_make_report, test_run_validation, test_run_markers, test_run_real):
+    for t in (test_edge_cases, test_make_report, test_run_validation, test_algo_api, test_run_fault, test_run_markers, test_run_real):
         t()
         print("PASS", t.__name__)

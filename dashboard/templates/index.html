@@ -15,6 +15,7 @@
   <div class="tabs" role="tablist" aria-label="화면">
     <button type="button" role="tab" data-tab-btn="overview" aria-selected="true">개요</button>
     <button type="button" role="tab" data-tab-btn="analysis" aria-selected="false">심층 분석</button>
+    <button type="button" role="tab" data-tab-btn="algo" aria-selected="false">알고리즘 비교</button>
     <button type="button" role="tab" data-tab-btn="run" aria-selected="false">실험 실행</button>
   </div>
   <label class="control">실험 <select id="exp"></select></label>
@@ -53,6 +54,17 @@
   {% for p in analysis %}{{ panel(p) }}{% endfor %}
 </main>
 
+<main class="algo" data-tab="algo" hidden>
+  <div class="algo_bar" aria-label="알고리즘 비교 조건">
+    <b>단일 중앙 집계 (엣지 없음) · FedAvg · FedProx · q-FedAvg</b>
+    <span class="algo_ctl">로컬 epoch <span class="seg" id="algo_epoch" role="radiogroup" aria-label="로컬 epoch"></span></span>
+    <span class="algo_ctl">시드 <span class="seg" id="algo_seed" role="radiogroup" aria-label="시드"></span></span>
+    <span id="algo_note" class="algo_note"></span>
+    <span id="algo_cond" class="algo_cond"></span>
+  </div>
+  {% for p in algo %}{{ panel(p) }}{% endfor %}
+</main>
+
 <main class="runner" data-tab="run" hidden>
   <section class="panel" aria-labelledby="run_h1">
     <h3 id="run_h1"><span class="badge">1</span>학습 설정<span class="tag">설정</span></h3>
@@ -62,6 +74,7 @@
       <h4>초기 모델</h4><div id="run_init" class="seg"></div>
       <h4>배정 방식 (1개 이상)</h4><div id="run_methods" class="run_checks"></div>
       <h4>결함 주입</h4><div id="run_inject" class="run_checks"></div>
+      <h4>지연·중단 주입</h4><div id="run_fault" class="run_checks"></div>
     </div>
   </section>
   <section class="panel" aria-labelledby="run_h2">

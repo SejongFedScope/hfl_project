@@ -59,9 +59,9 @@ REGIONS = [
     {"no": 3, "title": "데이터·클라 학습", "question": "숫자 분포 차이가 클라 학습으로 어떻게 이어지나", "panels": [
         {"id": "p_data", "title": "데이터 분포", "tag": "데이터", "desc": "클라 × 숫자 표본 수, 엣지별 합, 숫자 쏠림"},
         {"id": "p_clients", "title": "클라 로그", "tag": "클라", "desc": "클라별 학습 손실·정확도·지연 추이, 실패 수"}]},
-    {"no": 4, "title": "공동 모델·실험 비교", "question": "공동 모델 성능과 배정 방식 차이", "panels": [
+    {"no": 4, "title": "공동 모델·실험 비교", "question": "공동 모델 성능과 실험 조건(배정·결함·지연) 차이", "panels": [
         {"id": "p_trend", "title": "학습 추세", "tag": "공동 모델", "desc": "라운드별 정확도·손실, 라운드 × 숫자 정확도"},
-        {"id": "p_compare", "title": "배정 방식 비교", "tag": "비교", "desc": "선호 vs 무작위 정확도·선호 충족도·엣지 구성"}]},
+        {"id": "p_compare", "title": "실험 비교", "tag": "비교", "desc": "이 실험 vs 비교 실험: 정확도·선호 충족도·엣지 구성 (결함·지연 실험은 같은 배정의 기본 실험과)"}]},
 ]
 ANALYSIS = [  # '심층 분석' 탭: 큰 패널 4개 (2×2)
     {"id": "p_local", "title": "클라 모델 vs 공동 모델", "tag": "연합 효과", "desc": "숫자별 정확도: 클라가 자기 데이터로 학습한 직후 모델과 공동 모델"},
@@ -69,7 +69,13 @@ ANALYSIS = [  # '심층 분석' 탭: 큰 패널 4개 (2×2)
     {"id": "p_rank", "title": "클라 정확도 순위 변화", "tag": "순위", "desc": "라운드마다 클라 모델 정확도 순위 (1 = 가장 높음)"},
     {"id": "p_sim", "title": "클라 유사도", "tag": "군집", "desc": "숫자별 정확도가 얼마나 비슷한가 (코사인 유사도, 1 = 같음)"},
 ]
-SCRIPTS = ["state.js", "kpi.js", "structure.js", "comm.js", "data.js", "global.js", "analysis.js", "run.js"]  # state.js 가 먼저 (나머지가 subscribe 함)
+ALGO = [  # '알고리즘 비교' 탭 (담당 A 심화 결과 logs/algo_compare 를 읽기만 함): 큰 패널 4개
+    {"id": "p_algo_curve", "title": "공동 모델 정확도", "tag": "라운드", "desc": "단일 중앙 집계에서 알고리즘별 라운드마다 공동 정확도"},
+    {"id": "p_algo_table", "title": "최종 지표", "tag": "비교", "desc": "마지막 라운드 기준, 시드 평균 (최소~최대). 열마다 가장 좋은 값 굵게"},
+    {"id": "p_algo_tradeoff", "title": "변화량과 정확도", "tag": "trade-off", "desc": "클라 모델이 공동 모델에서 벗어난 크기(평균 변화량)와 최종 정확도, 점 = 알고리즘 × epoch"},
+    {"id": "p_algo_digits", "title": "숫자별 정확도", "tag": "숫자", "desc": "마지막 라운드 공동 모델의 숫자별 정확도 (선택한 epoch·시드)"},
+]
+SCRIPTS = ["state.js", "kpi.js", "structure.js", "comm.js", "data.js", "global.js", "analysis.js", "run.js", "algo.js"]  # state.js 가 먼저 (나머지가 subscribe 함)
 
 
 def log_source():
@@ -85,7 +91,29 @@ def log_source():
 
 @app.get("/")
 def index():
-    return render_template("index.html", regions=REGIONS, analysis=ANALYSIS, scripts=SCRIPTS, log_source=log_source())
+    return render_template("index.html", regions=REGIONS, analysis=ANALYSIS, algo=ALGO, scripts=SCRIPTS, log_source=log_source())
+
+
+@app.get("/api/algo")
+def algo():
+    """알고리즘 비교 결과 (scripts/compare_algorithms.py 가 만든 logs/algo_compare/summary.json)
+    + 실험마다 마지막 라운드 공동 모델의 숫자별 정확도. 없으면 404 + 만드는 명령"""
+    root = app.config["LOG_ROOT"] / "algo_compare"
+    if not (root / "summary.json").exists():
+        return jsonify(error="알고리즘 비교 결과가 없음",
+                       hint="python -m scripts.compare_algorithms --seeds 42 7 123 --epochs 1 5 10 --q 1 5 --q-epochs 1"), 404
+    try:
+        summary = read_json(root / "summary.json")
+        results = summary["results"]
+    except (ValueError, KeyError, TypeError):  # 쓰는 도중이거나 깨진 파일
+        return jsonify(error="알고리즘 비교 결과 파일을 읽지 못함 (만드는 중이면 끝난 뒤 다시)",
+                       hint="python -m scripts.compare_algorithms … 를 다시 실행"), 500
+    for x in results:
+        name = str(x.get("exp_id", ""))
+        ok = name.startswith("alg_") and "/" not in name and "\\" not in name and ".." not in name  # summary 안 이름으로 폴더 밖을 읽지 않게
+        last = [r for r in read_jsonl(root / name / "train.jsonl") if r.get("target") == "global"] if ok else []
+        x["final_by_digit"] = last[-1]["acc_by_digit"] if last else None
+    return jsonify(summary)
 
 
 @app.get("/api/experiments")

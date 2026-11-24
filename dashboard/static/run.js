@@ -35,6 +35,18 @@ function build_run_form(d) {
   run_val("run_inject").replaceChildren(
     h("label", {}, h("input", {id: "run_inject_on", type: "checkbox", checked: d.inject}), " 거부될 시험 요청 2건 넣기"),
     h("label", {className: "inline"}, "주입할 라운드 ", h("input", {id: "run_inject_round", type: "number", value: d.inject_round, min: 1, max: d.limits.inject_round[1]})));
+  const f = d.fault;
+  const pick = (id, v) => h("select", {id}, h("option", {value: "", textContent: "없음"}),
+    ...RUN_CLIENTS.map(c => h("option", {value: c, textContent: c, selected: v === c})));
+  const row = (id, label, el) => [h("label", {htmlFor: id, textContent: label}), el];
+  run_val("run_fault").replaceChildren(
+    h("label", {}, h("input", {id: "run_fault_on", type: "checkbox", checked: d.fault_on}), " 클라 지연·중단 + 엣지 대기 제한"),
+    h("div", {className: "run_fault_grid"},
+      ...row("run_fault_round", "라운드", h("input", {id: "run_fault_round", type: "number", value: f.round, min: 1, max: 100})),
+      ...row("run_fault_delay_client", "지연 클라", pick("run_fault_delay_client", f.delay_client)),
+      ...row("run_fault_delay_sec", "지연 시간(초)", h("input", {id: "run_fault_delay_sec", type: "number", value: f.delay_sec, min: 0.1, max: 30, step: 0.5})),
+      ...row("run_fault_drop_client", "중단 클라 (제출 안 함)", pick("run_fault_drop_client", f.drop_client)),
+      ...row("run_fault_deadline_sec", "엣지 대기 제한(초)", h("input", {id: "run_fault_deadline_sec", type: "number", value: f.deadline_sec, min: 0.1, max: 30, step: 0.5}))));
 
   const head = h("tr", {}, h("th", {textContent: ""}), ...[...Array(10).keys()].map(n => h("th", {textContent: n})), h("th", {textContent: "숫자 · 장"}));
   const rows = RUN_CLIENTS.map(c => h("tr", {id: `run_row_${c}`},
@@ -94,6 +106,9 @@ function collect_run() {  // 화면 값 → /api/run 본문
     init_model: (document.querySelector('input[name="run_init"]:checked') || {}).value,
     methods: [...run_val("run_methods").querySelectorAll("input:checked")].map(x => x.value),
     inject: run_val("run_inject_on").checked,
+    fault_on: run_val("run_fault_on").checked,
+    fault: {round: num("run_fault_round"), delay_client: run_val("run_fault_delay_client").value || null, delay_sec: num("run_fault_delay_sec"),
+            drop_client: run_val("run_fault_drop_client").value || null, deadline_sec: num("run_fault_deadline_sec")},
     client_digits: digits,
     client_prefs: Object.fromEntries(RUN_CLIENTS.map(c => {
       const first = document.querySelector(`input[name="run_cp_${c}"]:checked`).value;
@@ -111,6 +126,7 @@ function mark_changed(body) {  // 기본값과 다른 칸에 주황 표시 + 개
   flag(run_val("run_init"), body.init_model !== d.init_model);
   flag(run_val("run_methods"), body.methods.join() !== d.methods.join());
   flag(run_val("run_inject"), body.inject !== d.inject || (body.inject && body.inject_round !== d.inject_round));
+  flag(run_val("run_fault"), body.fault_on !== d.fault_on || (body.fault_on && Object.keys(d.fault).some(k => body.fault[k] !== d.fault[k])));
   run_val("run_digits").querySelectorAll("input[data-c]").forEach(x =>
     flag(x.closest(".tog"), x.checked !== d.client_digits[x.dataset.c].includes(Number(x.dataset.d))));
   RUN_CLIENTS.forEach(c => flag(run_val(`run_cp_row_${c}`), body.client_prefs[c][0] !== d.client_prefs[c][0]));
@@ -124,6 +140,7 @@ function mark_changed(body) {  // 기본값과 다른 칸에 주황 표시 + 개
 function on_run_change() {
   const body = collect_run();
   run_val("run_inject_round").disabled = !body.inject;  // 결함 주입을 끄면 라운드는 안 씀
+  run_val("run_fault").querySelectorAll(".run_fault_grid input, .run_fault_grid select").forEach(x => { x.disabled = !body.fault_on; });
   mark_changed(body);
   RUN_CLIENTS.forEach(c => {  // 클라 줄 끝: 숫자 개수 · 숫자당 장수
     const k = body.client_digits[c].length, n = body.samples_per_client;
@@ -142,8 +159,9 @@ function show_run_errors(errors) {  // 목록 + 해당 칸 빨간 테두리 (fie
   const fields = new Set(errors.map(e => e.field));
   RUN_NUMBERS.forEach(([k]) => run_val(`run_${k}`).setAttribute("aria-invalid", String(fields.has(k))));
   run_val("run_inject_round").setAttribute("aria-invalid", String(fields.has("inject_round")));
+  ["round", "delay_client", "delay_sec", "drop_client", "deadline_sec"].forEach(k => run_val(`run_fault_${k}`).setAttribute("aria-invalid", String(fields.has(`fault.${k}`))));
   RUN_CLIENTS.forEach(c => run_val(`run_row_${c}`).classList.toggle("bad_row", fields.has(`client_digits.${c}`)));
-  const boxes = {client_digits: "run_digits", client_prefs: "run_client_prefs", edge_prefs: "run_edge_prefs", methods: "run_methods", init_model: "run_init"};
+  const boxes = {client_digits: "run_digits", client_prefs: "run_client_prefs", edge_prefs: "run_edge_prefs", methods: "run_methods", init_model: "run_init", fault: "run_fault"};
   Object.entries(boxes).forEach(([f, id]) => run_val(id).classList.toggle("bad_box", fields.has(f)));
   update_run_buttons();
 }
@@ -161,12 +179,12 @@ async function run_preview(body) {
   if (seq !== run_ui.seq) return;
   const errors = data.errors || [];
   if (!run_ui.def.run_allowed) errors.push({field: "", msg: "시험 로그 모드(--sample)라 실행은 막혀 있음. 미리보기만 됨"});
-  if (res.ok) render_run_preview(data.preview, body.methods);
+  if (res.ok) render_run_preview(data.preview, body.methods, body.fault_on ? body.fault : null);
   run_val("run_preview").classList.toggle("stale", !res.ok);  // 오류면 지난 미리보기를 흐리게 남김 (어디까지 맞았는지 보이게)
   show_run_errors(errors);
 }
 
-function render_run_preview(pv, methods) {
+function render_run_preview(pv, methods, fault) {
   const digit_list = counts => counts.map((n, d) => (n ? d : null)).filter(d => d !== null);
   const missing = counts => { const m = counts.map((n, d) => (n ? null : d)).filter(d => d !== null); return m.length ? m.join("·") : "없음"; };
   const rows = [
@@ -175,6 +193,10 @@ function render_run_preview(pv, methods) {
     ...RUN_EDGES.map(e => [`${e} 에 없는 숫자`, m => missing(pv[m].edge_digits[e])]),
     ["평균 선호 순위 (낮을수록 좋음)", m => (pv[m].mean_pref_rank === null ? "–" : `${pv[m].mean_pref_rank.toFixed(2)}위`)],
     ["위반 (미배정·중복·정원)", m => String(pv[m].violations)],
+    ...(fault ? RUN_EDGES.map(e => [`R${fault.round} ${e} 제출 클라 (지연·중단)`, m => {
+      const fe = pv[m].fault_edges[e];
+      return (fe.sure.join("·") || "없음") + (fe.late.length ? ` + ${fe.late.join("·")} 늦게 (대기 제한에 걸리면 빠짐)` : "");
+    }]) : []),
   ];
   const ms = Object.keys(METHOD_NAMES);
   const head = h("tr", {}, h("th", {textContent: "배정 미리보기"}),

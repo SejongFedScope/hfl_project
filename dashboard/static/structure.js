@@ -80,14 +80,28 @@ function render_tree(s) {  // 4.3.2 ① 계층 트리
     children: edges,
   };
 
+  const leaves = edges.flatMap(e => e.children);
+  const tags = c => [fails[c], tests[c], round_ran && !joined.has(c)].filter(Boolean).length;
+  const right = Math.min(120 + 60 * Math.max(0, ...leaves.map(x => tags(x.name))), Math.max(120, chart.getWidth() * 0.55));  // 클라 옆 표시가 잘리지 않게, 좁은 화면에선 트리가 찌그러지지 않게 상한
+  const why = c => {  // 빠진 이유 (지연·중단 실험): 제출 요청 기록으로 판단
+    const ups = b.comm.filter(x => x.round === s.round && x.src === c && /client_update/.test(x.api));
+    const late = ups.find(x => !is_measured(x));  // 일부러 늦게 낸 시험 요청 (지연 주입)
+    const fail = ups.find(x => is_measured(x) && !x.ok);
+    if (late) return `${c} 늦게 제출 → ${late.ok ? "받음" : `거부 ${late.status || ""}`.trim()}`;
+    if (fail) return `${c} 제출 실패 (${fail.status || fail.error || "오류"})`;
+    return `${c} 제출 없음(중단)`;
+  };
+  const absent = round_ran ? nsort(Object.keys(client_edge(b)).filter(c => !joined.has(c))) : [];
+  const note = absent.length ? `R${s.round} 빠진 클라: ${absent.map(why).join(" · ")} → 엣지는 온 클라만 집계` : "";
   const text = base_text();
   draw(chart, {
     animation: false,  // 글자·칸이 바로 보이게 애니메이션 끔
     textStyle: text,
     tooltip: {trigger: "item", formatter: p => p.data.tip || esc(p.name)},
+    title: {text: note, left: 0, bottom: 0, textStyle: {fontSize: 13, fontWeight: 600, color: critical, width: chart.getWidth() - 8, overflow: "break"}},
     series: [{
       type: "tree", data: [root], orient: "LR", layout: "orthogonal",
-      left: 56, right: 120, top: 12, bottom: 12,
+      left: 56, right, top: 12, bottom: note ? 40 : 12,
       symbol: "circle", symbolSize: 11, expandAndCollapse: false, roam: false,
       lineStyle: {width: 1.5, curveness: 0.5},
       label: {

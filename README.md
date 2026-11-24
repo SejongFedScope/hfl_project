@@ -61,7 +61,7 @@ python -m scripts.run_all --methods pref,random [--inject]   # 고른 배정 방
 python -m scripts.run_all --fault  # 심화: 클라 지연·중단 주입 + 엣지 대기 시간 제한 (설정 fault) → exp_pref_seed42_fault
 python -m scripts.make_report      # logs/ → docs/report.md 표 + docs/img/ 그래프
 python -m tests.test_requirements  # 명세 필수 6항목 O/X (run_all 다음에)
-python -m dashboard.app            # http://127.0.0.1:5050  ('실험 실행' 탭에서 설정 바꿔 실행 → logs/run-<시각>/)
+python -m dashboard.app            # http://127.0.0.1:5050  (탭: 개요 · 심층 분석 · 알고리즘 비교 · 실험 실행 → docs/dashboard.md)
 python -m dashboard.app --sample   # 실제 로그 대신 dashboard/sample_logs/ 시험 로그로 화면 보기
 ```
 

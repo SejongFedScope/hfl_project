@@ -161,7 +161,7 @@ body {
 
 #p_requests, #p_clients { overflow: auto; }
 #p_compare { display: flex; flex-direction: column; gap: 4px; }
-.sub_chart { flex: 1 1 45%; min-height: 100px; }
+.sub_chart { flex: 1 1 45%; min-height: 84px; }  /* 아래 표가 다 보이게 그래프가 줄어듦 */
 .sub_table .tbl td, .sub_table .tbl th { padding: 3px 8px; }
 .sub_table { flex: 0 0 auto; overflow: auto; }  /* 표는 다 보이게, 줄어드는 건 위 그래프 */
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -198,15 +198,31 @@ body {
 
 /* 실험 실행 탭 (run.js) */
 body[data-tab="run"] #kpi, body[data-tab="run"] #legend,
-body[data-tab="run"] #top .control, body[data-tab="run"] #pin_chip { display: none; }  /* 실행 탭: 실험·라운드 고르는 컨트롤은 상관없어서 숨김 */
+body[data-tab="run"] #top .control, body[data-tab="run"] #pin_chip,
+body[data-tab="algo"] #kpi, body[data-tab="algo"] #legend, body[data-tab="algo"] #top .control, body[data-tab="algo"] #pin_chip { display: none; }
+.algo { grid-row: 2 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 12px 16px 16px; min-height: 0; }
+.algo_bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.algo_ctl { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+.algo_note { margin-left: auto; color: var(--text-primary); font-weight: 600; }
+.algo_cond { flex-basis: 100%; color: var(--text-secondary); font-size: 13px; }
+.algo_cond code { font: 12px ui-monospace, Consolas, monospace; padding: 1px 6px; border-radius: 3px; background: var(--surface); border: 1px solid var(--border); color: var(--text-primary); user-select: all; }
+#p_algo_table { overflow: auto; }
+.algo_tbl caption { white-space: normal; color: var(--text-secondary); font-weight: 600; line-height: 1.5; }
+.algo_tbl td.num { white-space: nowrap; line-height: 1.25; }
+.algo_tbl td.num small { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.algo_tbl th { white-space: normal; vertical-align: bottom; }
+.algo_tbl .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }  /* 실행 탭: 실험·라운드 고르는 컨트롤은 상관없어서 숨김 */
 .tabs button.running::after { content: " ●"; color: var(--pick); }  /* 다른 탭에서도 실행 중 표시 */
 .runner .changed { box-shadow: inset 3px 0 0 var(--pick); }
 .runner input.changed { box-shadow: inset 0 0 0 2px var(--pick); }
 .tog.changed span { box-shadow: 0 0 0 2px var(--pick); }
 .runner [aria-invalid="true"] { border-color: var(--critical); box-shadow: inset 0 0 0 2px var(--critical); }
 .run_grid tr.bad_row th, .run_grid tr.bad_row td.num { color: var(--critical); }
-.bad_box { outline: 2px solid var(--critical); outline-offset: 2px; border-radius: 4px; }
-.runner input:disabled { opacity: 0.4; }
+.bad_box { outline: 2px solid var(--critical); outline-offset: 4px; border-radius: 4px; }
+.runner input:disabled, .runner select:disabled { opacity: 0.4; }
+.runner select { font: inherit; padding: 6px 8px; color: var(--text-primary); background: var(--sunken); border: 1px solid var(--border); border-radius: 4px; }
+.run_fault_grid { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 6px 8px; margin-top: 4px; }
+.run_fault_grid label { color: var(--text-secondary); }
 #run_preview.stale { opacity: 0.35; }
 .sub_table .tbl { font-size: 12px; }
 .sub_table .tbl td, .sub_table .tbl th { padding: 2px 6px; }

@@ -18,7 +18,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from hfl.assign import check_assignment, make_assignment
 from hfl.common import BASE_DIR, load_config, write_json
-from runner.client_runner import make_exp_id
+from runner.client_runner import check_fault, make_exp_id
 
 bp = Blueprint("runs", __name__)
 SAMPLE_ROOT = BASE_DIR / "dashboard" / "sample_logs"  # 화면 개발용 시험 로그 (git 에 있음 → 여기에 실행 결과를 쓰면 안 됨)
@@ -36,6 +36,11 @@ NUMBERS = {  # 이름: (화면 라벨, 최소, 최대, 형)
     "samples_per_client": ("클라당 이미지 수", 10, 5000, int),
     "inject_round": ("결함 주입 라운드", 1, 100, int),
 }
+FAULT_NUMBERS = {  # 지연·중단 주입 (설정 fault, 담당 B 심화 6.B)
+    "round": ("지연·중단 라운드", 1, 100, int),
+    "delay_sec": ("지연 시간(초)", 0.1, 30.0, float),
+    "deadline_sec": ("엣지 대기 제한(초)", 0.1, 30.0, float),
+}
 MNIST_TRAIN_PER_DIGIT = [5923, 6742, 5958, 6131, 5842, 5421, 5918, 6265, 5851, 5949]  # MNIST 학습 6만 장의 숫자별 장수 (고정)
 lock = threading.Lock()
 job = {"proc": None, "tag": None, "dir": None, "exps": [], "log": None, "stopped": False, "marked": False, "rounds": 0}
@@ -45,7 +50,7 @@ def defaults():
     """화면 처음 값 = configs/default.json"""
     c = load_config()
     return {**{k: c[k] for k in NUMBERS}, "init_model": c.get("init_model", "zeros"), "client_digits": c["client_digits"], "client_prefs": c["client_prefs"],
-            "edge_prefs": c["edge_prefs"], "methods": METHODS, "inject": False, "edge_capacity": c["edge_capacity"],
+            "edge_prefs": c["edge_prefs"], "methods": METHODS, "inject": False, "edge_capacity": c["edge_capacity"], "fault_on": False, "fault": c["fault"],
             "limits": {k: [lo, hi] for k, (_, lo, hi, _) in NUMBERS.items()}, "run_allowed": run_allowed()}
 
 
@@ -70,6 +75,23 @@ def _number(v, lo, hi, typ):
 def _ranking(v, items):
     """items 전부를 한 번씩 담은 순위 목록이면 True (동점·빠짐·다른 값 없음)"""
     return isinstance(v, list) and len(v) == len(items) and all(isinstance(x, str) for x in v) and sorted(v) == sorted(items)
+
+
+def min_deadline(cfg):
+    """지연·중단 실험의 엣지 대기 제한 최솟값(초). 담당 B 엣지는 이 제한을 '모든 라운드'에 걸고, 라운드 첫 GET /model 부터 잼
+    → 평소 라운드에도 클라 3명이 학습·제출하는 시간보다 짧으면 정상 클라가 빠져 실행이 멈춤 (409 deadline passed)
+    ponytail: 실측(클라당 1,200장·epoch 1 → 라운드 6명 약 0.7초)에서 클라 1명 ≈ 0.11초 × 장수/1200 × epoch + 0.05초 로 어림, 여유 2배"""
+    t = 0.11 * cfg["samples_per_client"] / 1200 * cfg["local_epochs"] + 0.05
+    return max(1.0, round(2 * 3 * t, 1))
+
+
+def fault_msg(e):
+    """check_fault(담당 B) 오류 문구의 설정 키 이름 → 화면 라벨"""
+    s = str(e)
+    for k, v in (("fault.delay_sec, fault.deadline_sec", "지연 시간·대기 제한"), ("fault.delay_client", "지연 클라"),
+                 ("drop_client", "중단 클라"), ("fault.round", "라운드"), ("fault: ", "")):
+        s = s.replace(k, v)
+    return s
 
 
 def validate(body):
@@ -129,10 +151,48 @@ def validate(body):
     else:
         cfg["edge_prefs"] = {e: ep[e] for e in EDGES}
 
+    fault_on = body.get("fault_on") is True
+    if fault_on:
+        f, ok = body.get("fault"), True
+        if not isinstance(f, dict):
+            err("fault", "지연·중단 설정이 없음")
+            ok = False
+        else:
+            fault = {}
+            for k, (label, lo, hi, typ) in FAULT_NUMBERS.items():
+                v = _number(f.get(k), lo, hi, typ)
+                if v is None:
+                    err(f"fault.{k}", f"{label}: {lo}~{hi} 사이 {'정수' if typ is int else '숫자'}")
+                    ok = False
+                fault[k] = v
+            for k in ("delay_client", "drop_client"):
+                v = f.get(k)
+                if v is not None and v not in CLIENTS:
+                    err(f"fault.{k}", f"{'지연' if k == 'delay_client' else '중단'} 클라: C1~C6 또는 없음")
+                    ok = False
+                fault[k] = v
+        if ok:
+            cfg["fault"] = fault
+            try:
+                check_fault(cfg)  # 라운드 범위, 같은 클라 둘 다 지정 등 (B 의 검사 그대로)
+            except ValueError as e:
+                err("fault.round" if "fault.round" in str(e) else "fault", f"지연·중단: {fault_msg(e)}")
+            need = min_deadline(cfg)
+            if "samples_per_client" not in [x["field"] for x in errors] and fault["deadline_sec"] < need:
+                err("fault.deadline_sec", f"엣지 대기 제한: 지연·중단 실험은 모든 라운드에 대기 제한이 걸림. 이 학습량(클라당 {cfg['samples_per_client']}장 × "
+                                          f"epoch {cfg['local_epochs']})이면 평소 라운드에도 엣지에 3명이 모이는 데 시간이 걸려 {need}초 이상 필요")
+
     methods = body.get("methods")
     if not isinstance(methods, list) or not methods or not all(isinstance(m, str) and m in METHODS for m in methods) or len(set(methods)) != len(methods):
         err("methods", "배정 방식: 선호·무작위 중 1개 이상")
         methods = []
+    if fault_on and not [e for e in errors if e["field"].startswith(("fault", "client_prefs", "edge_prefs"))]:
+        for m in [m for m in METHODS if m in (methods or [])]:
+            try:
+                check_fault(cfg, make_assignment(cfg, m))  # 엣지마다 제출할 클라가 남는지 (배정을 알아야 봄)
+            except ValueError as e:
+                err("fault", f"지연·중단 ({'선호' if m == 'pref' else '무작위'} 배정): {fault_msg(e)}")
+    cfg["fault_on"] = fault_on
     return cfg, [m for m in METHODS if m in methods], inject, errors
 
 
@@ -149,6 +209,11 @@ def preview(cfg):
             "violations": len(chk["unassigned"]) + len(chk["duplicated"]) + len(chk["capacity_violation"]),
             "edge_digits": {e: [sum(per_digit[c] for c in cs if d in cfg["client_digits"][c]) for d in range(10)] for e, cs in a.items()},
         }
+        if cfg.get("fault_on"):  # 지연·중단 라운드에 엣지마다 확실히 집계에 들어가는 클라 + 늦게 내는 클라
+            f = cfg["fault"]  # 지연 클라는 다른 클라를 다 처리한 뒤 제출 → 엣지 대기 제한(첫 GET 부터)에 걸리면 빠짐: 미리 장담 못 함
+            out[m]["fault_edges"] = {e: {"sure": [c for c in cs if c not in (f["drop_client"], f["delay_client"])],
+                                         "late": [c for c in cs if c == f["delay_client"]]} for e, cs in a.items()}
+
     return out
 
 
@@ -265,7 +330,8 @@ def run_start():
         out.mkdir(parents=True)
         cfg["log_dir"] = str(out)  # 절대 경로 → BASE_DIR / 절대 경로 = 그대로
         write_json(out / "run_config.json", cfg)  # config.json 이 아님 → 이 폴더 자체는 실험 목록에 안 나옴
-        cmd = [sys.executable, "-m", "scripts.run_all", "--methods", ",".join(methods)] + (["--inject"] if inject else [])
+        fault = cfg["fault_on"]
+        cmd = [sys.executable, "-m", "scripts.run_all", "--methods", ",".join(methods)] + (["--inject"] if inject else []) + (["--fault"] if fault else [])
         log = out / "run.log"
         env = {**os.environ, "HFL_CONFIG": str(out / "run_config.json"), "PYTHONIOENCODING": "utf-8",
                "PYTHONUNBUFFERED": "1"}  # 출력을 바로 파일에 → 실행 기록 칸에 진행이 보이고, 중지해도 안 사라짐
@@ -273,7 +339,7 @@ def run_start():
             proc = subprocess.Popen(cmd, cwd=BASE_DIR, env=env, stdout=f, stderr=subprocess.STDOUT,
                                     start_new_session=os.name != "nt")  # 셸 안 거침, 인자는 검사한 값만
         job.update(proc=proc, tag=tag, dir=out, log=log, stopped=False, marked=False, rounds=cfg["rounds"],
-                   exps=[f"{tag}/{make_exp_id(cfg, m, inject)}" for m in methods])
+                   exps=[f"{tag}/{make_exp_id(cfg, m, inject, fault)}" for m in methods])
         return jsonify(tag=tag, exps=job["exps"]), 202
 
 

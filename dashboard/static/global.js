@@ -97,6 +97,23 @@ function render_trend(s) {  // 4.3.5 ④ 공동 모델 정확도·손실 + 라�
   });
 }
 
+function config_diff(a, b) {  // 정확도에 영향을 주는 학습 설정 중 다른 것 (배정·결함·지연·라운드 수는 비교하려는 조건이라 뺌)
+  const keys = {seed: "시드", lr: "학습률", local_epochs: "epoch", batch_size: "배치", samples_per_client: "클라당 장수",
+    client_digits: "데이터 분할", init_model: "초기 모델"};
+  return Object.entries(keys).filter(([k]) => JSON.stringify(a[k] ?? "zeros") !== JSON.stringify(b[k] ?? "zeros")).map(([, v]) => v);
+}
+
+function missing_rounds(b) {  // [[라운드, [빠진 클라...]], ...] — 배정된 클라 중 그 라운드에 집계에 안 들어간 클라 (지연·중단 실험)
+  const all = Object.keys(client_edge(b));
+  const out = [];
+  for (let r = 1; r <= done_rounds(b); r++) {
+    const joined = new Set(b.train.filter(x => x.round === r && x.participated).map(x => x.target));
+    const gone = nsort(all.filter(c => !joined.has(c)));
+    if (gone.length) out.push([r, gone]);
+  }
+  return out;
+}
+
 function compare_metrics(b) {
   const comp = b.assignment.edge_composition;
   const es = nsort(Object.keys(comp));
@@ -117,6 +134,7 @@ function compare_metrics(b) {
     ["마지막 라운드 공동 정확도", g.length ? (g[g.length - 1].acc * 100).toFixed(1) + "%" : "–"],
     ["요청 성공률 (시험 요청 제외)", reqs.length ? ((reqs.filter(x => x.ok).length / reqs.length) * 100).toFixed(1) + "%" : "–"],
     ["평균 라운드 시간", durs.length ? fmt_ms(durs.reduce((a, v) => a + v, 0) / durs.length) : "–"],
+    ["집계에서 빠진 클라", missing_rounds(b).map(([r, cs]) => `R${r} ${cs.join("·")}`).join(", ") || "없음"],
   ];
 }
 
@@ -139,7 +157,11 @@ function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도
   const R = Math.max(ga.length, gc.length);
   const diffs = ga.map((x, i) => (x && gc[i] ? Math.abs(x.acc - gc[i].acc) * 100 : null)).filter(v => v !== null);
   const max_diff = diffs.length ? Math.max(...diffs) : null;
-  const label_of = (x, exp) => `${x.assignment.method === "pref" ? "선호" : "무작위"} (${exp})`;
+  const label_of = (x, exp) => `${x.assignment.method === "pref" ? "선호" : "무작위"}${x.config.inject ? "·결함 주입" : ""}${x.config.fault_on ? "·지연·중단" : ""} (${exp})`;
+  const diff_at = ga.map((x, i) => (x && gc[i] ? Math.abs(x.acc - gc[i].acc) * 100 : -1));
+  const worst_r = diff_at.indexOf(Math.max(...diff_at)) + 1;
+  const n = Math.min(ga.length, gc.length);
+  const last_diff = n && ga[n - 1] && gc[n - 1] ? Math.abs(ga[n - 1].acc - gc[n - 1].acc) * 100 : null;
 
   const text = base_text();
   draw(chart, {
@@ -147,7 +169,8 @@ function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도
     textStyle: text,
     tooltip: {trigger: "axis", valueFormatter: v => (v === null || v === undefined ? "–" : (v * 100).toFixed(1) + "%")},
     title: {text: max_diff === null ? (done_rounds(c) ? "" : "비교 실험에 끝난 라운드가 없어 곡선 비교 불가")
-      : `공동 정확도 최대 차이 ${max_diff.toFixed(1)}%p` + (max_diff < 0.05 ? " → 두 배정의 공동 모델이 같음" : ""),
+      : `공동 정확도 최대 차이 ${max_diff.toFixed(1)}%p` + (max_diff < 0.05 ? " → 라운드마다 공동 정확도가 같음"
+        : ` (R${worst_r})` + (last_diff === null ? "" : ` · R${n} 차이 ${last_diff.toFixed(1)}%p` + (ga.length !== gc.length ? " (두 실험 공통 마지막 라운드)" : ""))),
       left: 0, top: 0, textStyle: {fontSize: 13, fontWeight: 600, color: ink}},
     legend: {top: 18, left: 0, itemWidth: 16, itemHeight: 2, textStyle: {fontSize: 12, color: text.color}},
     grid: {left: 40, right: 12, top: 42, bottom: 18},
@@ -180,9 +203,25 @@ function render_assign_compare(s) {  // 4.3.9 ④ 선호 vs 무작위: 정확도
   });
   table.appendChild(tbody);
   const cap = document.createElement("caption");
-  cap.textContent = max_diff === null ? "" : max_diff < 0.05
-    ? "해석: 모든 클라가 같은 공동 모델에서 시작해 다 참여하고, 엣지 집계 1번마다 중앙 집계 → 2단계 가중 평균 = 클라 전체 가중 평균이라 배정과 무관하게 공동 모델이 같음. 배정은 엣지 구성(분포 차이)만 바꿈"
-    : "해석: 공동 정확도가 다름 → 엣지 안에서 여러 번 집계했거나 일부 클라가 빠진 라운드가 있는지 확인 (같은 조건이면 원래 같아야 함)";
+  const miss = [[b, "이 실험"], [c, "비교 실험"]].flatMap(([x, who]) => missing_rounds(x).map(([r, cs]) => ({who, r, cs, x})));
+  const diff_keys = config_diff(b.config, c.config);
+  const at_worst = miss.filter(m => m.r === worst_r);  // 가장 크게 벌어진 라운드에 빠진 클라가 있을 때만 그 탓으로 봄
+  const last_miss = Math.max(0, ...miss.map(m => m.r));
+  cap.textContent = max_diff === null ? "" : diff_keys.length
+    ? `해석: 두 실험의 학습 설정이 다름 (${diff_keys.join(", ")}) → 정확도 차이를 배정·결함·지연 탓으로 볼 수 없음. 같은 설정의 실험과 비교하세요`
+    : max_diff < 0.05
+      ? (b.assignment.method !== c.assignment.method
+        ? "해석: 공동 정확도가 같음 — 모든 클라가 같은 공동 모델에서 시작해 다 참여하고, 엣지 집계 1번마다 중앙 집계 → 2단계 가중 평균 = 클라 전체 가중 평균이라 배정과 무관. 배정은 엣지 구성(분포 차이)·선호 충족도만 바꿈"
+        : b.config.inject || c.config.inject
+          ? "해석: 공동 정확도가 같음 — 일부러 넣은 시험 요청(지난 버전·배정 밖 엣지 제출)은 409 로 거부돼 집계에 안 들어감 → 버전 검사·배정 검사가 잘못된 제출을 막음"
+          : "해석: 공동 정확도가 같음 — 같은 배정·같은 설정, 집계에서 빠진 클라도 없음")
+      : at_worst.length
+        ? `해석: ${at_worst.map(m => `${m.who}은 R${m.r} 에 ${m.cs.map(k => `${k}(숫자 ${digits_of(m.x, k).join("·")})`).join("·")} 가 빠짐`).join(", ")}` +
+          ` → 그 라운드 집계에 그 숫자가 덜 들어가 공동 정확도가 ${max_diff.toFixed(1)}%p 벌어짐` +
+          (last_miss < n && last_diff !== null && last_diff < 0.5 ? `. R${last_miss + 1} 부터 모두 참여해 회복 (R${n} 차이 ${last_diff.toFixed(1)}%p)` : "")
+        : miss.length
+          ? `해석: 가장 크게 벌어진 R${worst_r} 에는 빠진 클라가 없음 (빠진 라운드: ${miss.map(m => `R${m.r}`).join("·")}) → 다른 원인도 확인`
+          : "해석: 공동 정확도가 다름 → 엣지 안에서 여러 번 집계했거나 일부 클라가 빠진 라운드가 있는지 확인 (같은 조건이면 원래 같아야 함)";
   table.prepend(cap);
   host.querySelector(".sub_table").replaceChildren(table);
   chart.resize();  // 표가 들어간 뒤 줄어든 그래프 칸에 맞춤

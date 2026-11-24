@@ -1,4 +1,4 @@
-const state = {exp: null, compare_exp: null, round: 1, hover: null, pinned: null, bundle: null, compare_bundle: null, tab: "overview"};  // hover·pinned = {type: "edge"|"client"|"digit", id}
+const state = {exp: null, compare_exp: null, compare_manual: false, round: 1, hover: null, pinned: null, bundle: null, compare_bundle: null, tab: "overview"};  // hover·pinned = {type: "edge"|"client"|"digit", id}
 const listeners = [];
 const charts = {};
 
@@ -215,15 +215,36 @@ function update_live_status() {
 
 function exp_method(e) { return String(e).split("_")[1]; }  // exp_<배정방식>_seed..
 
+function is_variant(e) { return /_(inject|fault)/.test(e); }  // 결함 주입·지연·중단 실험
+
+function exp_seed(e) { const m = /_seed(\d+)/.exec(e); return m ? m[1] : null; }
+
+function default_compare(exp, exps) {  // 결함·지연 실험 → 꼬리표를 하나씩 뗀 실험(같은 실행 → 기존), 기본 실험 → 시드가 같고 배정 방식이 다른 실험
+  const folder = e => (e.includes("/") ? e.split("/")[0] + "/" : "");
+  const name = exp.slice(folder(exp).length);
+  for (let n = name; /_(inject|fault)$/.test(n);) {  // exp_pref_seed42_inject_fault → _inject → 기본
+    n = n.replace(/_(inject|fault)$/, "");
+    for (const cand of [folder(exp) + n, n]) if (cand !== exp && exps.includes(cand)) return cand;
+  }
+  const same_seed = exps.filter(e => e !== exp && exp_seed(e) === exp_seed(exp) && exp_method(e) !== exp_method(exp));
+  const plain = same_seed.filter(e => !is_variant(e));
+  return plain.find(e => folder(e) === folder(exp)) ?? plain[0] ?? same_seed[0] ?? exps.find(e => e !== exp) ?? exp;  // 맞는 게 없으면 아무거나 (설정이 다르면 비교 패널이 그렇다고 알림)
+}
+
+function auto_compare() {  // 사용자가 비교 실험을 직접 고른 적이 없으면 지금 실험에 맞는 비교 실험으로
+  if (state.compare_manual || !state.exp) return;
+  const cmp = document.getElementById("compare_exp");
+  const want = default_compare(state.exp, [...cmp.options].map(o => o.value));
+  if (want !== state.compare_exp) { cmp.value = want; load_compare(want); }
+}
+
 function add_new_experiments(exps) {  // 실행 중에 새로 생긴 실험을 선택 상자에 추가
   for (const id of ["exp", "compare_exp"]) {
     const sel = document.getElementById(id);
     const have = new Set([...sel.options].map(o => o.value));
     exps.filter(e => !have.has(e)).forEach(e => sel.add(new Option(e, e)));
   }
-  const cmp = document.getElementById("compare_exp");
-  const other = exps.find(e => exp_method(e) !== exp_method(state.exp));
-  if (state.compare_exp === state.exp && other) { cmp.value = other; load_compare(other); }  // 처음엔 실험이 하나뿐이라 자기와 비교 중 → 배정 방식이 다른 실험이 생기면 바꿈
+  auto_compare();  // 처음엔 실험이 하나뿐이라 자기와 비교 중 → 맞는 실험이 생기면 바꿈
 }
 
 async function poll() {
@@ -281,7 +302,7 @@ async function init() {
     return;
   }
   document.querySelectorAll("[data-tab-btn]").forEach(b => { b.onclick = () => set_tab(b.dataset.tabBtn); });  // 로그가 없어도 실험 실행 탭은 씀
-  const start_tab = ["analysis", "run"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "overview";
+  const start_tab = ["analysis", "algo", "run"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "overview";
   if (!exps.length) {
     set_tab(start_tab);
     document.getElementById("kpi").innerHTML = '<p class="empty">로그가 없습니다. 실험을 먼저 돌리거나 <code>python -m dashboard.app --sample</code> 로 시험 로그를 보세요. 실험이 시작되면 자동으로 열립니다.</p>';
@@ -301,9 +322,9 @@ async function init() {
     sel.add(new Option(e, e));
     cmp.add(new Option(e, e));
   }
-  cmp.value = exps.find(e => exp_method(e) !== exp_method(exps[0])) ?? exps.find(e => e !== exps[0]) ?? exps[0];  // 처음엔 배정 방식이 다른 실험과 비교
-  sel.onchange = () => load_bundle(sel.value);
-  cmp.onchange = () => load_compare(cmp.value);
+  cmp.value = default_compare(exps[0], exps);
+  sel.onchange = async () => { await load_bundle(sel.value); auto_compare(); };
+  cmp.onchange = () => { state.compare_manual = true; load_compare(cmp.value); };  // 직접 고르면 그 뒤로 자동으로 안 바꿈
   document.getElementById("round").oninput = ev => set_round(Number(ev.target.value));
   document.getElementById("pin_chip").onclick = clear_pin;
   document.addEventListener("keydown", ev => {
