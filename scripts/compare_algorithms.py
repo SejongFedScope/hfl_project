@@ -146,7 +146,7 @@ def build_doc(res):
                                   and (sd is None or x["seed"] == sd)]
 
     head = ["로컬 epoch", "알고리즘", "최종 정확도", "최종 손실", "최저 숫자 정확도", "하락 라운드 수",
-            "클라 정확도 최솟값", "평균 변화량", "클라별 공동 정확도 최솟값", "숫자별 정확도 표준편차"]
+            "클라 정확도 최솟값", "평균 변화량", "클라별 공동 정확도 최솟값", "클라 간 표준편차", "숫자별 정확도 표준편차"]
     rows = []
     for e in epochs:
         for a in algos:
@@ -156,7 +156,8 @@ def build_doc(res):
             rows.append([e, label(xs[0]), stat([x["final_acc"] for x in xs]), stat([x["final_loss"] for x in xs]),
                          stat([x["final_min_digit_acc"] for x in xs]), stat([x["acc_drop_rounds"] for x in xs], "{:.1f}"),
                          stat([x["final_client_acc_min"] for x in xs]), stat([x["mean_update_norm"] for x in xs]),
-                         stat([x["final_own_acc_min"] for x in xs]), stat([x["final_digit_acc_std"] for x in xs])])
+                         stat([x["final_own_acc_min"] for x in xs]), stat([x["final_own_acc_std"] for x in xs]),
+                         stat([x["final_digit_acc_std"] for x in xs])])
     summary_md = (f"시드 {', '.join(map(str, seeds))} · 라운드 {res['rounds']} · 단일 중앙 집계. "
                   f"값 = 시드 평균 (최소~최대).\n\n" + table(head, rows))
 
