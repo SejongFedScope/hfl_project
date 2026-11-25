@@ -2,6 +2,10 @@
 
 클라마다 config 의 client_digits 숫자만 보유. 같은 숫자를 가진 클라끼리도 이미지가 겹치지 않게 나눔.
 MNIST 미러: https://ossci-datasets.s3.amazonaws.com/mnist/
+
+[입력 전처리] 픽셀 밝기를 /255 로 0~1 범위로만 바꿈. 원본(FedProx data/mnist/generate_niid.py 20~22행)은
+픽셀마다 학습+시험 70,000장의 평균·표준편차로 표준화 (x − μ)/(σ + 0.001) 함. 원본과 다르게 둔 이유와
+정확도 차이(같은 조건 20라운드 87.62% 대 89.54%)는 docs/third_party.md "원본과 다르게 둔 것" 참고.
 """
 import gzip
 from pathlib import Path
@@ -60,7 +64,7 @@ def load_mnist(cfg):
     for key, name in FILES.items():
         if key.endswith("_x"):
             pixels = _read_idx(d / name, 2051, 16)              # 이미지: 헤더 16바이트
-            out[key] = pixels.reshape(-1, 784).astype(np.float64) / 255.0   # 밝기 0~1
+            out[key] = pixels.reshape(-1, 784).astype(np.float64) / 255.0   # 밝기 0~1 (원본은 픽셀별 표준화, 모듈 설명 참고)
         else:
             out[key] = _read_idx(d / name, 2049, 8).astype(np.int64)        # 라벨: 헤더 8바이트
 
