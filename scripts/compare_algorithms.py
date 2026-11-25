@@ -17,6 +17,7 @@ Flask 서버 없이 한 프로세스에서 라운드 루프를 돌림. 분할·�
       --report 이면 docs/algorithm_comparison.md 의 <!-- auto:... --> 구간(표)과 docs/img/algo_acc_e*.svg(그래프) 갱신.
 """
 import argparse
+import json
 
 import numpy as np
 
@@ -132,6 +133,18 @@ def stat(vals, fmt="{:.4f}"):
     return f"{fmt.format(float(np.mean(vals)))} ({fmt.format(min(vals))}~{fmt.format(max(vals))})"
 
 
+def own_max(x):
+    """마지막 라운드 공동 모델의 클라별 공동 정확도 최댓값 (원본 plot_fairness.py 의 best 10%, 클라 6개라 최댓값).
+    summary.json 에는 없어서 그 실험의 train.jsonl 을 읽음 → summary.json 형식(화면이 읽는 파일)은 그대로. 로그가 없으면 None"""
+    path = exp_dir(load_config(), f"{OUT}/{x['exp_id']}") / "train.jsonl"
+    try:
+        with open(path, encoding="utf-8") as f:
+            rows = [r for r in map(json.loads, f) if r.get("target") == "global" and "acc_by_client" in r]
+        return max(rows[-1]["acc_by_client"].values()) if rows else None
+    except OSError:
+        return None
+
+
 def build_doc(res):
     """summary.json → docs/algorithm_comparison.md 의 auto 구간 + docs/img/algo_acc_e*.svg"""
     from scripts.make_report import fill, svg_lines, table   # 김영헌 make_report 의 표·그래프·auto 구간 함수 재사용
@@ -146,17 +159,21 @@ def build_doc(res):
                                   and (sd is None or x["seed"] == sd)]
 
     head = ["로컬 epoch", "알고리즘", "최종 정확도", "최종 손실", "최저 숫자 정확도", "하락 라운드 수",
-            "클라 정확도 최솟값", "평균 변화량", "클라별 공동 정확도 최솟값", "클라 간 표준편차", "숫자별 정확도 표준편차"]
+            "클라 정확도 최솟값", "평균 변화량", "클라별 공동 정확도 최솟값", "클라별 공동 정확도 최댓값", "클라 간 표준편차",
+            "숫자별 정확도 표준편차"]
     rows = []
     for e in epochs:
         for a in algos:
             xs = pick(e, a)
             if not xs:                                   # q-FedAvg 는 일부 epoch 에서만 실행
                 continue
+            mx = [own_max(x) for x in xs]
+            best = "—" if None in mx else stat(mx)
             rows.append([e, label(xs[0]), stat([x["final_acc"] for x in xs]), stat([x["final_loss"] for x in xs]),
                          stat([x["final_min_digit_acc"] for x in xs]), stat([x["acc_drop_rounds"] for x in xs], "{:.1f}"),
                          stat([x["final_client_acc_min"] for x in xs]), stat([x["mean_update_norm"] for x in xs]),
-                         stat([x["final_own_acc_min"] for x in xs]), stat([x["final_own_acc_std"] for x in xs]),
+                         stat([x["final_own_acc_min"] for x in xs]), best,
+                         stat([x["final_own_acc_std"] for x in xs]),
                          stat([x["final_digit_acc_std"] for x in xs])])
     summary_md = (f"시드 {', '.join(map(str, seeds))} · 라운드 {res['rounds']} · 단일 중앙 집계. "
                   f"값 = 시드 평균 (최소~최대).\n\n" + table(head, rows))
