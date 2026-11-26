@@ -127,6 +127,33 @@ def check_keyboard_and_hover(browser, url, errors):
     pg.close()
 
 
+def check_fit(browser, url, errors):
+    """다른 해상도·비율: 1920×1080 배치를 화면에 맞춰 늘리고 줄임 → 스크롤·패널 넘침 없음, 실제 마우스 클릭이 맞는 칸을 고름"""
+    click_pt = """() => { const c = chart_of('p_data'); const px = c.convertToPixel({xAxisIndex: 0, yAxisIndex: 0}, [3, 'C2']);
+      const r = c.getDom().getBoundingClientRect(); const k = r.width / c.getWidth(); return [r.left + px[0] * k, r.top + px[1] * k]; }"""
+    for w, h in [(1280, 720), (1366, 768), (1280, 1024), (2560, 1440)]:
+        pg = browser.new_page(viewport={"width": w, "height": h})
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.goto(url)
+        pg.wait_for_function("() => typeof state !== 'undefined' && state.bundle !== null", timeout=20000)
+        for tab in ["overview", "analysis", "algo", "run"]:
+            pg.click(f"[data-tab-btn={tab}]")
+            pg.wait_for_timeout(300)
+            size = pg.evaluate("() => [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight]")
+            assert size[0] <= 0 and size[1] <= 0, (w, h, tab, size)
+            over = pg.evaluate("() => [...document.querySelectorAll('main[data-tab=' + state.tab + '] .panel')].filter(p => p.scrollHeight > p.clientHeight + 1).length")
+            assert over == 0, (w, h, tab, over)
+        pg.click("[data-tab-btn=overview]")
+        pg.wait_for_timeout(300)
+        x, y = pg.evaluate(click_pt)
+        pg.mouse.click(x, y)
+        assert pg.evaluate("() => state.pinned && state.pinned.type === 'digit' && state.pinned.id === 3"), (w, h, pg.evaluate("() => state.pinned"))
+        pg.click(".panel:has(#p_trend) [data-zoom]")
+        box = pg.locator(".panel.zoomed").bounding_box()
+        assert box["width"] > w * 0.9 and box["height"] > h * 0.9, (w, h, box)  # 크게 보기도 화면 대부분
+        pg.close()
+
+
 def check_layout(browser, url, errors):
     """1920×1080 한 화면: 페이지 스크롤·패널 넘침 없음"""
     pg = _open(browser, url, errors)
@@ -439,7 +466,7 @@ def test_ui():
     try:
         with sync_playwright() as p:
             browser = _launch(p)
-            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs, check_sample_blocks_run, check_fault_view, check_compare_caption, check_headline, check_zoom]),
+            plan = [(SAMPLE_ROOT, [check_kpi, check_linking, check_keyboard_and_hover, check_layout, check_tabs, check_sample_blocks_run, check_fault_view, check_compare_caption, check_headline, check_zoom, check_fit]),
                     (algo_root, [check_algo_tab]),
                     (empty_root, [check_empty_run, check_run_tab]),
                     (no_logs_root, [check_no_logs, check_run_fail]),

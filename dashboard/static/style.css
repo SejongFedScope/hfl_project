@@ -53,6 +53,7 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+html { overflow: hidden; }  /* body 는 fit_screen() 이 화면 크기에 맞춰 늘리고 줄임 → 페이지 스크롤 없음 */
 body {
   margin: 0;
   display: grid;
@@ -157,7 +158,7 @@ body {
 }
 .zoom_btn:hover { background: var(--sunken); color: var(--text-primary); }
 #zoom_backdrop { position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, 0.45); }
-.panel.zoomed { position: fixed; inset: 3vh 3vw; z-index: 60; padding: 16px 22px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); }
+.panel.zoomed { position: fixed; inset: 3% 3%; z-index: 60; padding: 16px 22px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35); }
 .panel.zoomed h3 { font-size: 22px; }
 .panel.zoomed .zoom_btn { font-size: 16px; padding: 4px 14px; color: var(--text-primary); }
 .panel.zoomed .desc { font-size: 17px; white-space: normal; }

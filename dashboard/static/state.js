@@ -17,15 +17,23 @@ function set_tab(tab) {  // 개요 / 심층 분석 / 실험 실행. 선택 상�
 
 function css_var(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
+const DESIGN_W = 1920, DESIGN_H = 1080;  // 화면은 이 크기 기준으로 짜고, 실제 화면에 맞춰 통째로 늘리고 줄임
+let fit = 1;
+function fit_screen() {  // 어느 해상도·프로젝터에서도 같은 배치 (스크롤·잘림 없음). zoom 은 ECharts 클릭 좌표가 어긋나서 transform 사용
+  fit = Math.min(innerWidth / DESIGN_W, innerHeight / DESIGN_H);
+  Object.assign(document.body.style, {transformOrigin: "0 0", transform: `scale(${fit})`, width: `${innerWidth / fit}px`, height: `${innerHeight / fit}px`});
+}
+
 function chart_of(id) {  // 패널 div 하나 = ECharts 인스턴스 하나
   if (!charts[id]) {
     const el = document.getElementById(id);
-    charts[id] = echarts.init(el);
+    charts[id] = echarts.init(el, null, {devicePixelRatio: (window.devicePixelRatio || 1) * Math.max(1, fit)});  // 크게 늘린 화면에서도 선명하게
     new ResizeObserver(() => charts[id].resize()).observe(el);  // 핵심 결과 줄·표 길이 때문에 칸 크기가 바뀌어도 차트가 따라감
   }
   return charts[id];
 }
 window.addEventListener("resize", () => {
+  fit_screen();
   Object.values(charts).forEach(c => c.resize());
   notify();  // 칸 크기에 따라 숫자 표시 여부가 바뀌는 패널이 있어서 다시 그림
 });
@@ -347,6 +355,7 @@ async function load_compare(exp) {  // ④ 배정 방식 비교용 두 번째 �
 }
 
 async function init() {
+  fit_screen();
   await Promise.race([document.fonts.ready, new Promise(ok => setTimeout(ok, 800))]);  // 글꼴을 기다리되 최대 0.8초 (인터넷이 막혀도 화면은 뜸)
   let exps;
   try {
